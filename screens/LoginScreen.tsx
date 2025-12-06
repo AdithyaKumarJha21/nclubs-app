@@ -1,5 +1,7 @@
+import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
@@ -9,33 +11,56 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { supabase } from "../services/supabase";
 
 export default function LoginScreen() {
+  const router = useRouter();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  // simple local validation for now (no Supabase yet)
-  const handleLoginPress = () => {
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const isValidEmail = (value: string) => {
+    return /\S+@\S+\.\S+/.test(value);
+  };
+
+  const handleLoginPress = async () => {
+    setErrorMessage(null);
+
     if (!email.trim() || !password.trim()) {
-      Alert.alert("Missing details", "Please enter both email and password.");
+      setErrorMessage("Please enter both email and password.");
       return;
     }
 
-    // Very basic email check, just to help user
-    if (!email.includes("@") || !email.includes(".")) {
-      Alert.alert("Invalid email", "Please enter a valid email address.");
+    if (!isValidEmail(email.trim())) {
+      setErrorMessage("Please enter a valid email address.");
       return;
     }
 
-    // For Day 2, we just show a dummy success
-    Alert.alert("Login pressed", "This will be connected to Supabase later.");
+    setIsSubmitting(true);
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
+
+    if (error) {
+      setErrorMessage(error.message || "Invalid login credentials.");
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (data.session) {
+      router.replace("/student-home");
+    }
+
+    setIsSubmitting(false);
   };
 
   const handleForgotPasswordPress = () => {
-    Alert.alert(
-      "Forgot Password",
-      "This will take you to the Forgot Password screen in a later day."
-    );
+    Alert.alert("Forgot Password", "This feature will be added soon.");
   };
 
   return (
@@ -44,52 +69,50 @@ export default function LoginScreen() {
       behavior={Platform.select({ ios: "padding", android: undefined })}
     >
       <View style={styles.card}>
-        <Text style={styles.title}>Welcome back 👋</Text>
-        <Text style={styles.subtitle}>Login to NCLUBS</Text>
+        <Text style={styles.title}>Welcome Back!</Text>
 
-        {/* Email field */}
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>College Email</Text>
+          <Text style={styles.label}>Email</Text>
           <TextInput
             style={styles.input}
             placeholder="you@nmit.ac.in"
-            keyboardType="email-address"
-            autoCapitalize="none"
             value={email}
-            onChangeText={setEmail}
+            onChangeText={(t) => setEmail(t)}
+            autoCapitalize="none"
+            keyboardType="email-address"
           />
         </View>
 
-        {/* Password field */}
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Password</Text>
           <TextInput
             style={styles.input}
-            placeholder="Enter your password"
+            placeholder="Enter password"
             secureTextEntry
             value={password}
-            onChangeText={setPassword}
+            onChangeText={(t) => setPassword(t)}
           />
         </View>
 
-        {/* Forgot password */}
+        {errorMessage && (
+          <Text style={styles.error}>{errorMessage}</Text>
+        )}
+
         <TouchableOpacity
-          onPress={handleForgotPasswordPress}
-          style={styles.forgotContainer}
+          style={styles.loginButton}
+          onPress={handleLoginPress}
+          disabled={isSubmitting}
         >
-          <Text style={styles.forgotText}>Forgot Password?</Text>
+          {isSubmitting ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.loginButtonText}>Login</Text>
+          )}
         </TouchableOpacity>
 
-        {/* Login button */}
-        <TouchableOpacity style={styles.loginButton} onPress={handleLoginPress}>
-          <Text style={styles.loginButtonText}>Login</Text>
+        <TouchableOpacity onPress={handleForgotPasswordPress}>
+          <Text style={styles.forgot}>Forgot Password?</Text>
         </TouchableOpacity>
-
-        {/* Extra info for later */}
-        <Text style={styles.helperText}>
-          New here? Signup screen will be added next so students can create
-          accounts with USN + college email.
-        </Text>
       </View>
     </KeyboardAvoidingView>
   );
@@ -98,7 +121,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0f172a", // dark navy
+    backgroundColor: "#0f172a",
     alignItems: "center",
     justifyContent: "center",
     padding: 16,
@@ -107,34 +130,17 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 380,
     backgroundColor: "white",
+    padding: 20,
     borderRadius: 16,
-    paddingVertical: 24,
-    paddingHorizontal: 20,
-    shadowColor: "#000",
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
     elevation: 6,
   },
   title: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: "700",
-    marginBottom: 4,
-    textAlign: "left",
+    marginBottom: 20,
   },
-  subtitle: {
-    fontSize: 14,
-    color: "#6b7280",
-    marginBottom: 24,
-  },
-  inputGroup: {
-    marginBottom: 14,
-  },
-  label: {
-    fontSize: 13,
-    marginBottom: 4,
-    color: "#4b5563",
-  },
+  inputGroup: { marginBottom: 14 },
+  label: { fontSize: 13, marginBottom: 4 },
   input: {
     borderWidth: 1,
     borderColor: "#d1d5db",
@@ -142,33 +148,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 14,
-    backgroundColor: "#f9fafb",
-  },
-  forgotContainer: {
-    alignSelf: "flex-end",
-    marginTop: 4,
-    marginBottom: 16,
-  },
-  forgotText: {
-    fontSize: 13,
-    color: "#2563eb",
   },
   loginButton: {
     backgroundColor: "#2563eb",
     paddingVertical: 12,
     borderRadius: 10,
     alignItems: "center",
-    marginBottom: 12,
+    marginTop: 10,
   },
   loginButtonText: {
     color: "white",
-    fontSize: 16,
     fontWeight: "600",
+    fontSize: 16,
   },
-  helperText: {
-    fontSize: 12,
-    color: "#6b7280",
+  forgot: {
+    marginTop: 10,
+    color: "#2563eb",
     textAlign: "center",
-    marginTop: 4,
+  },
+  error: {
+    color: "red",
+    fontSize: 13,
+    marginBottom: 8,
   },
 });
