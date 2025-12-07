@@ -1,19 +1,16 @@
-import { createContext, useState, useEffect } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase } from '../services/supabase';
+import { createContext, useState } from "react";
 
-export const UserContext = createContext();
+export const UserContext = createContext({
+  user: null,
+  setUser: (user) => {},
+});
 
 export default function UserProvider({ children }) {
   const [user, setUser] = useState(null);
 
-  useEffect(() => {
-    const session = supabase.auth.getSession().then((res) => {
-      if (res.data.session) setUser(res.data.session.user);
-    });
-  }, []);
-
-  const value = { user, setUser };
-
-  return <UserContext.Provider value={value}>{children}</UserContext.Provider>;
+  return (
+    <UserContext.Provider value={{ user, setUser }}>
+      {children}
+    </UserContext.Provider>
+  );
 }
