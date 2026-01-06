@@ -1,8 +1,7 @@
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import { useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
@@ -18,7 +17,6 @@ export default function LoginScreen() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -59,8 +57,9 @@ export default function LoginScreen() {
     setIsSubmitting(false);
   };
 
+  // ✅ FINAL FORGOT PASSWORD HANDLER
   const handleForgotPasswordPress = () => {
-    Alert.alert("Forgot Password", "This feature will be added soon.");
+    router.push("/forgot-password");
   };
 
   return (
@@ -77,7 +76,7 @@ export default function LoginScreen() {
             style={styles.input}
             placeholder="you@nmit.ac.in"
             value={email}
-            onChangeText={(t) => setEmail(t)}
+            onChangeText={setEmail}
             autoCapitalize="none"
             keyboardType="email-address"
           />
@@ -90,13 +89,11 @@ export default function LoginScreen() {
             placeholder="Enter password"
             secureTextEntry
             value={password}
-            onChangeText={(t) => setPassword(t)}
+            onChangeText={setPassword}
           />
         </View>
 
-        {errorMessage && (
-          <Text style={styles.error}>{errorMessage}</Text>
-        )}
+        {errorMessage && <Text style={styles.error}>{errorMessage}</Text>}
 
         <TouchableOpacity
           style={styles.loginButton}
@@ -139,8 +136,13 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginBottom: 20,
   },
-  inputGroup: { marginBottom: 14 },
-  label: { fontSize: 13, marginBottom: 4 },
+  inputGroup: {
+    marginBottom: 14,
+  },
+  label: {
+    fontSize: 13,
+    marginBottom: 4,
+  },
   input: {
     borderWidth: 1,
     borderColor: "#d1d5db",

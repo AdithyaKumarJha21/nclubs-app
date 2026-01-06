@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { supabase } from "../services/supabase";
 
 export default function SignupScreen() {
   const [name, setName] = useState("");
@@ -16,19 +17,52 @@ export default function SignupScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  const handleSignupPress = () => {
-    // For Day 3 (A), we JUST show a simple alert.
-    // Person B / backend will later add real validation + Supabase.
-    if (!name || !usn || !email || !password) {
-      Alert.alert("Missing details", "Please fill all the fields.");
-      return;
-    }
+  const handleSignupPress = async () => {
+  if (!name || !usn || !email || !password) {
+    Alert.alert("Missing details", "Please fill all the fields.");
+    return;
+  }
 
+  // 1. Create auth user
+  const { data, error } = await supabase.auth.signUp({
+    email: email.trim(),
+    password,
+  });
+
+  if (error) {
+    Alert.alert("Signup failed", error.message);
+    return;
+  }
+
+  if (!data.user) {
+    Alert.alert("Error", "User not created.");
+    return;
+  }
+
+  // 2. Save profile (SAFE method)
+  const { error: profileError } = await supabase
+    .from("profiles")
+    .upsert({
+      id: data.user.id,
+      name,
+      usn,
+      email: email.trim(),
+    });
+
+  if (profileError) {
     Alert.alert(
-      "Signup pressed",
-      "In the next days, this will create an account and save profile to the database."
+      "Profile error",
+      "Account created, but profile could not be saved."
     );
-  };
+    return;
+  }
+
+  Alert.alert(
+    "Signup successful 🎉",
+    "Please check your email to confirm your account."
+  );
+};
+
 
   return (
     <KeyboardAvoidingView
