@@ -1,7 +1,7 @@
-import { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from "react-native";
-import { supabase } from "../../services/supabase";
 import { useRouter } from "expo-router";
+import { useState } from "react";
+import { StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { supabase } from "../../services/supabase";
 
 export default function Signup() {
   const router = useRouter();
@@ -15,19 +15,40 @@ export default function Signup() {
   async function handleSignup() {
     setError("");
 
-    const { error } = await supabase.auth.signUp({
+    // Create auth user
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
       email: form.email,
       password: form.password,
     });
 
-    if (error) return setError(error.message);
+    if (signUpError) {
+      setError(signUpError.message);
+      return;
+    }
 
-    await supabase.rpc("insert_profile", {
-      p_name: form.name,
-      p_usn: form.usn,
-      p_email: form.email,
-      p_role: "student",
-    });
+    // Get the newly created user
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError || !userData?.user) {
+      setError("Could not fetch user info");
+      return;
+    }
+    const user = userData.user;
+
+    // Insert profile using auth user ID
+    const { error: insertError } = await supabase
+      .from("profiles")
+      .insert({
+        id: user.id,
+        email: form.email,
+        name: form.name,
+        usn: form.usn,
+        role: "student",
+      });
+
+    if (insertError) {
+      setError("RLS prevented profile creation");
+      return;
+    }
 
     alert("Account created!");
     router.replace("/(auth)/login");
