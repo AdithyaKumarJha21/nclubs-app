@@ -7,7 +7,7 @@ export default function Index() {
       <Text style={styles.title}>Welcome to NClubs App 🎉</Text>
       <Text style={styles.subtitle}>Choose a role to continue:</Text>
 
-      {/* Temporary navigation buttons */}
+      {/* Auth */}
       <Link href="/login" style={styles.button}>
         Go to Login
       </Link>
@@ -16,12 +16,18 @@ export default function Index() {
         Go to Signup
       </Link>
 
+      {/* Test homes */}
       <Link href="/student-home" style={styles.button}>
         Student Home (Test)
       </Link>
 
       <Link href="/faculty-home" style={styles.button}>
         Faculty Home (Test)
+      </Link>
+
+      {/* 🔥 Day 6: Clubs screen test */}
+      <Link href="/clubs" style={[styles.button, styles.clubsButton]}>
+        CLUBS (Test)
       </Link>
     </View>
   );
@@ -48,5 +54,9 @@ const styles = StyleSheet.create({
     fontSize: 18,
     marginVertical: 8,
     color: "blue",
+  },
+  clubsButton: {
+    marginTop: 20,
+    fontWeight: "bold",
   },
 });
