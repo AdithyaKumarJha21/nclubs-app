@@ -29,6 +29,11 @@ export default function Index() {
       <Link href="/clubs" style={[styles.button, styles.clubsButton]}>
         CLUBS (Test)
       </Link>
+
+      {/* 🔥 Day 7: Club Profile screen test */}
+      <Link href="/club-profile" style={[styles.button, styles.clubsButton]}>
+        Club Profile (Test)
+      </Link>
     </View>
   );
 }
