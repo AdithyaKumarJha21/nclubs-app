@@ -1,42 +1,82 @@
-import { ScrollView, StyleSheet, Text, View } from "react-native";
-import ClubGallery from "../components/ClubGallery"; // B’s component (safe import)
+import { useState } from "react";
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+
+import ClubGallery from "../components/ClubGallery";
+import EditableTextSection from "../components/EditableTextSection";
+import { useEditMode } from "../hooks/useEditMode";
 
 export default function ClubProfileScreen() {
+  const {
+    isEditing,
+    startEdit,
+    cancelEdit,
+    saveEdit,
+  } = useEditMode();
+
+  const [about, setAbout] = useState(
+    "The Tech Club focuses on innovation, coding, and building real-world projects through teamwork and hands-on learning."
+  );
+
+  const [whatToExpect, setWhatToExpect] = useState(
+    "• Weekly workshops\n• Hackathons & competitions\n• Guest lectures\n• Team projects"
+  );
+
+  const [achievements, setAchievements] = useState(
+    "• Winners of XYZ Hackathon\n• Hosted 10+ workshops\n• 500+ active members"
+  );
+
   return (
     <ScrollView style={styles.container}>
       <Text style={styles.clubName}>Tech Club</Text>
 
+      {/* Edit / Save / Cancel buttons */}
+      {isEditing ? (
+        <View style={{ flexDirection: "row", gap: 16, marginBottom: 20 }}>
+          <TouchableOpacity onPress={saveEdit}>
+            <Text style={{ color: "green", fontWeight: "600" }}>Save</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={cancelEdit}>
+            <Text style={{ color: "red", fontWeight: "600" }}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <TouchableOpacity onPress={startEdit} style={{ marginBottom: 20 }}>
+          <Text style={{ color: "blue", fontWeight: "600" }}>Edit</Text>
+        </TouchableOpacity>
+      )}
+
       {/* About Us */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>About Us</Text>
-        <Text style={styles.sectionText}>
-          The Tech Club focuses on innovation, coding, and building real-world
-          projects through teamwork and hands-on learning.
-        </Text>
+        <EditableTextSection
+          title="About Us"
+          value={about}
+          isEditing={isEditing}
+          onChange={setAbout}
+        />
       </View>
 
       {/* What to Expect */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>What to Expect</Text>
-        <Text style={styles.sectionText}>
-          • Weekly workshops{"\n"}
-          • Hackathons & competitions{"\n"}
-          • Guest lectures{"\n"}
-          • Team projects
-        </Text>
+        <EditableTextSection
+          title="What to Expect"
+          value={whatToExpect}
+          isEditing={isEditing}
+          onChange={setWhatToExpect}
+        />
       </View>
 
       {/* Achievements */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Achievements</Text>
-        <Text style={styles.sectionText}>
-          • Winners of XYZ Hackathon{"\n"}
-          • Hosted 10+ workshops{"\n"}
-          • 500+ active members
-        </Text>
+        <EditableTextSection
+          title="Achievements"
+          value={achievements}
+          isEditing={isEditing}
+          onChange={setAchievements}
+        />
       </View>
 
-      {/* Gallery (B’s work) */}
+      {/* Gallery */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Gallery</Text>
         <ClubGallery />
