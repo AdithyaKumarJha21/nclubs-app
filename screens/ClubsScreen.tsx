@@ -1,14 +1,25 @@
+import { useState } from "react";
 import { FlatList, StyleSheet, Text, View } from "react-native";
+
 import ClubCard from "../components/ClubCard";
-import { mockClubs } from "../data/mockClubs"; // 👈 B’s file
+import ClubSearchBar from "../components/ClubSearchBar";
+import { mockClubs } from "../data/mockClubs";
 
 export default function ClubsScreen() {
+  const [search, setSearch] = useState("");
+
+  const filteredClubs = mockClubs.filter((club) =>
+    club.name.toLowerCase().includes(search.toLowerCase())
+  );
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>CLUBS</Text>
 
+      <ClubSearchBar value={search} onChange={setSearch} />
+
       <FlatList
-        data={mockClubs}
+        data={filteredClubs}
         keyExtractor={(item) => item.id}
         numColumns={3}
         renderItem={({ item }) => (
