@@ -15,6 +15,15 @@ export default function Index() {
       <Link href="/signup" style={styles.button}>
         Go to Signup
       </Link>
+
+      {/* 🔥 Day 11: Events & Attendance test */}
+      <Link href="/events" style={styles.button}>
+        Events (Test)
+      </Link>
+
+      <Link href="/attendance-history" style={styles.button}>
+        Attendance History (Test)
+      </Link>
     </View>
   );
 }
