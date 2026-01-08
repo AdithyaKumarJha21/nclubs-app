@@ -15,25 +15,6 @@ export default function Index() {
       <Link href="/signup" style={styles.button}>
         Go to Signup
       </Link>
-
-      {/* Test homes */}
-      <Link href="/student-home" style={styles.button}>
-        Student Home (Test)
-      </Link>
-
-      <Link href="/faculty-home" style={styles.button}>
-        Faculty Home (Test)
-      </Link>
-
-      {/* 🔥 Day 6: Clubs screen test */}
-      <Link href="/clubs" style={[styles.button, styles.clubsButton]}>
-        CLUBS (Test)
-      </Link>
-
-      {/* 🔥 Day 7: Club Profile screen test */}
-      <Link href="/club-profile" style={[styles.button, styles.clubsButton]}>
-        Club Profile (Test)
-      </Link>
     </View>
   );
 }
@@ -59,9 +40,5 @@ const styles = StyleSheet.create({
     fontSize: 18,
     marginVertical: 8,
     color: "blue",
-  },
-  clubsButton: {
-    marginTop: 20,
-    fontWeight: "bold",
   },
 });
