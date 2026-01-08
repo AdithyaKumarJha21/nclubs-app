@@ -26,41 +26,25 @@ export default function Signup() {
       return;
     }
 
-    // Get the newly created user
-    const { data: userData, error: userError } = await supabase.auth.getUser();
-    if (userError || !userData?.user) {
-      setError("Could not fetch user info");
-      return;
-    }
-    const user = userData.user;
-
-    // Insert profile using auth user ID
-    const { error: insertError } = await supabase
-      .from("profiles")
-      .insert({
-        id: user.id,
-        email: form.email,
-        name: form.name,
-        usn: form.usn,
-        role: "student",
-      });
-
-    if (insertError) {
-      setError("RLS prevented profile creation");
-      return;
-    }
-
-    alert("Account created!");
+    // Note: Profile creation is handled in login.tsx to avoid RLS issues during signup
+    alert("Account created! Please check your email for confirmation if required, then login.");
     router.replace("/(auth)/login");
   }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Signup</Text>
+      <Text style={styles.title}>Create Account</Text>
 
+      <Text style={styles.label}>Name</Text>
       <TextInput placeholder="Name" style={styles.input} onChangeText={(v) => update("name", v)} />
+
+      <Text style={styles.label}>USN</Text>
       <TextInput placeholder="USN" style={styles.input} onChangeText={(v) => update("usn", v)} />
+
+      <Text style={styles.label}>Email</Text>
       <TextInput placeholder="Email" style={styles.input} onChangeText={(v) => update("email", v)} />
+
+      <Text style={styles.label}>Password</Text>
       <TextInput placeholder="Password" secureTextEntry style={styles.input} onChangeText={(v) => update("password", v)} />
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -75,6 +59,7 @@ export default function Signup() {
 const styles = StyleSheet.create({
   container: { flex: 1, justifyContent: "center", padding: 20 },
   title: { fontSize: 28, fontWeight: "bold", marginBottom: 16 },
+  label: { fontSize: 16, fontWeight: "500", marginBottom: 6, color: '#333' },
   input: { borderWidth: 1, padding: 12, borderRadius: 8, marginBottom: 10 },
   button: { backgroundColor: "#28a745", padding: 14, borderRadius: 8 },
   buttonText: { color: "white", textAlign: "center", fontWeight: "bold" },
