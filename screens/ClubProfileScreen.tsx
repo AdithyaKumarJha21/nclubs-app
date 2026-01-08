@@ -3,6 +3,8 @@ import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-nati
 
 import ClubGallery from "../components/ClubGallery";
 import EditableTextSection from "../components/EditableTextSection";
+import UploadedFilesList from "../components/UploadedFilesList";
+import UploadFileSection from "../components/UploadFileSection";
 import { useEditMode } from "../hooks/useEditMode";
 
 export default function ClubProfileScreen() {
@@ -81,6 +83,12 @@ export default function ClubProfileScreen() {
         <Text style={styles.sectionTitle}>Gallery</Text>
         <ClubGallery />
       </View>
+
+      {/* Uploaded Files */}
+      <UploadedFilesList />
+
+      {/* Upload Section (Faculty) */}
+      <UploadFileSection />
     </ScrollView>
   );
 }
