@@ -12,6 +12,10 @@ import {
 } from "react-native";
 import { supabase } from "../services/supabase";
 
+type RoleRow = {
+  name: "student" | "faculty" | "admin";
+};
+
 export default function LoginScreen() {
   const router = useRouter();
 
@@ -20,9 +24,7 @@ export default function LoginScreen() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const isValidEmail = (value: string) => {
-    return /\S+@\S+\.\S+/.test(value);
-  };
+  const isValidEmail = (value: string) => /\S+@\S+\.\S+/.test(value);
 
   const handleLoginPress = async () => {
     setErrorMessage(null);
@@ -39,25 +41,54 @@ export default function LoginScreen() {
 
     setIsSubmitting(true);
 
+    /* 1️⃣ AUTH LOGIN */
     const { data, error } = await supabase.auth.signInWithPassword({
       email: email.trim(),
       password,
     });
 
-    if (error) {
-      setErrorMessage(error.message || "Invalid login credentials.");
+    if (error || !data.user) {
+      setErrorMessage(error?.message || "Invalid login credentials.");
       setIsSubmitting(false);
       return;
     }
 
-    if (data.session) {
+    /* 2️⃣ FETCH ROLE (TYPE-SAFE) */
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("roles(name)")
+      .eq("id", data.user.id)
+      .single();
+
+    if (profileError || !profile?.roles) {
+      setErrorMessage("Unable to determine user role.");
+      setIsSubmitting(false);
+      return;
+    }
+
+    // 🔥 NORMALIZE ROLE (FIXES TS ERROR)
+    const roleRow = Array.isArray(profile.roles)
+      ? (profile.roles[0] as RoleRow)
+      : (profile.roles as RoleRow);
+
+    const role = roleRow?.name;
+
+    if (!role) {
+      setErrorMessage("User role not found.");
+      setIsSubmitting(false);
+      return;
+    }
+
+    /* 3️⃣ ROLE-BASED REDIRECT */
+    if (role === "faculty" || role === "admin") {
+      router.replace("/faculty-home");
+    } else {
       router.replace("/student-home");
     }
 
     setIsSubmitting(false);
   };
 
-  // ✅ FINAL FORGOT PASSWORD HANDLER
   const handleForgotPasswordPress = () => {
     router.push("/forgot-password");
   };

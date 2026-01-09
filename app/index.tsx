@@ -1,11 +1,19 @@
 import { Link } from "expo-router";
 import { StyleSheet, Text, View } from "react-native";
+import { useTheme } from "../theme/ThemeContext";
 
 export default function Index() {
+  const { theme } = useTheme();
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Welcome to NClubs App 🎉</Text>
-      <Text style={styles.subtitle}>Choose a role to continue:</Text>
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
+      <Text style={[styles.title, { color: theme.text }]}>
+        Welcome to NClubs App 🎉
+      </Text>
+
+      <Text style={[styles.subtitle, { color: theme.text }]}>
+        Choose a role to continue:
+      </Text>
 
       {/* Auth */}
       <Link href="/login" style={styles.button}>
@@ -25,7 +33,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     padding: 16,
-    backgroundColor: "#fff",
   },
   title: {
     fontSize: 24,

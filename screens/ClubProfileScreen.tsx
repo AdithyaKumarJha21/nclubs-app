@@ -1,120 +1,211 @@
-import { useState } from "react";
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useLocalSearchParams } from "expo-router";
+import { useEffect, useState } from "react";
+import {
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 import ClubGallery from "../components/ClubGallery";
 import EditableTextSection from "../components/EditableTextSection";
 import UploadedFilesList from "../components/UploadedFilesList";
 import UploadFileSection from "../components/UploadFileSection";
+
+import { useAuth } from "../context/AuthContext";
 import { useEditMode } from "../hooks/useEditMode";
+import { supabase } from "../services/supabase";
+import { useTheme } from "../theme/ThemeContext";
 
 export default function ClubProfileScreen() {
-  const {
-    isEditing,
-    startEdit,
-    cancelEdit,
-    saveEdit,
-  } = useEditMode();
+  const { theme } = useTheme();
+  const { user, loading } = useAuth();
+  const { clubId } = useLocalSearchParams<{ clubId?: string }>();
 
-  const [about, setAbout] = useState(
-    "The Tech Club focuses on innovation, coding, and building real-world projects through teamwork and hands-on learning."
-  );
+  const { isEditing, startEdit, cancelEdit } = useEditMode();
 
-  const [whatToExpect, setWhatToExpect] = useState(
-    "• Weekly workshops\n• Hackathons & competitions\n• Guest lectures\n• Team projects"
-  );
+  const [isAssigned, setIsAssigned] = useState(false);
+  const [isLoadingClub, setIsLoadingClub] = useState(true);
 
-  const [achievements, setAchievements] = useState(
-    "• Winners of XYZ Hackathon\n• Hosted 10+ workshops\n• 500+ active members"
-  );
+  const [about, setAbout] = useState("");
+  const [whatToExpect, setWhatToExpect] = useState("");
+  const [achievements, setAchievements] = useState("");
+
+  /* ===============================
+     1️⃣ FETCH CLUB SECTIONS (SAFE)
+     =============================== */
+  useEffect(() => {
+    if (!clubId) return;
+
+    const loadClub = async () => {
+      const { data, error } = await supabase
+        .from("club_sections")
+        .select("*")
+        .eq("club_id", clubId)
+        .order("order_index");
+
+      if (error) {
+        Alert.alert("Error", error.message);
+        setIsLoadingClub(false);
+        return;
+      }
+
+      // ✅ SOLUTION 4 — EMPTY DATA GUARD
+      if (!data || data.length === 0) {
+        setIsLoadingClub(false);
+        return;
+      }
+
+      const aboutSection = data.find(s => s.title === "About Us");
+      const expectSection = data.find(s => s.title === "What to Expect");
+      const achievementSection = data.find(s => s.title === "Achievements");
+
+      setAbout(aboutSection?.content ?? "");
+      setWhatToExpect(expectSection?.content ?? "");
+      setAchievements(achievementSection?.content ?? "");
+
+      setIsLoadingClub(false);
+    };
+
+    loadClub();
+  }, [clubId]);
+
+  /* ===============================
+     2️⃣ CHECK FACULTY ASSIGNMENT
+     =============================== */
+  useEffect(() => {
+    if (!user || !clubId) return;
+
+    if (user.role === "admin") {
+      setIsAssigned(true);
+      return;
+    }
+
+    if (user.role !== "faculty") {
+      setIsAssigned(false);
+      return;
+    }
+
+    const checkAssignment = async () => {
+      const { data, error } = await supabase
+        .from("faculty_assignments")
+        .select("id")
+        .eq("faculty_id", user.id)
+        .eq("club_id", clubId)
+        .single();
+
+      setIsAssigned(!error && !!data);
+    };
+
+    checkAssignment();
+  }, [user, clubId]);
+
+  if (loading || isLoadingClub) return null;
+
+  /* ===============================
+     3️⃣ FINAL PERMISSION CHECK
+     =============================== */
+  const canEdit =
+    user?.role === "admin" ||
+    (user?.role === "faculty" && isAssigned);
+
+  /* ===============================
+     4️⃣ SAVE (UPSERT — SAFE)
+     =============================== */
+  const handleSaveEdit = async () => {
+    if (!canEdit || !clubId) return;
+
+    const { error } = await supabase
+      .from("club_sections")
+      .upsert(
+        [
+          { club_id: clubId, title: "About Us", content: about, order_index: 1 },
+          { club_id: clubId, title: "What to Expect", content: whatToExpect, order_index: 2 },
+          { club_id: clubId, title: "Achievements", content: achievements, order_index: 3 },
+        ],
+        { onConflict: "club_id,title" }
+      );
+
+    if (error) {
+      Alert.alert("Error", error.message);
+      return;
+    }
+
+    cancelEdit();
+  };
 
   return (
-    <ScrollView style={styles.container}>
-      <Text style={styles.clubName}>Tech Club</Text>
+    <ScrollView style={[styles.container, { backgroundColor: theme.background }]}>
+      <Text style={[styles.clubName, { color: theme.text }]}>
+        Club Profile
+      </Text>
 
-      {/* Edit / Save / Cancel buttons */}
-      {isEditing ? (
-        <View style={{ flexDirection: "row", gap: 16, marginBottom: 20 }}>
-          <TouchableOpacity onPress={saveEdit}>
-            <Text style={{ color: "green", fontWeight: "600" }}>Save</Text>
+      {canEdit && (
+        isEditing ? (
+          <View style={{ flexDirection: "row", gap: 16, marginBottom: 20 }}>
+            <TouchableOpacity onPress={handleSaveEdit}>
+              <Text style={{ color: "green", fontWeight: "600" }}>Save</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={cancelEdit}>
+              <Text style={{ color: "red", fontWeight: "600" }}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity onPress={startEdit} style={{ marginBottom: 20 }}>
+            <Text style={{ color: "blue", fontWeight: "600" }}>Edit</Text>
           </TouchableOpacity>
-
-          <TouchableOpacity onPress={cancelEdit}>
-            <Text style={{ color: "red", fontWeight: "600" }}>Cancel</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <TouchableOpacity onPress={startEdit} style={{ marginBottom: 20 }}>
-          <Text style={{ color: "blue", fontWeight: "600" }}>Edit</Text>
-        </TouchableOpacity>
+        )
       )}
 
-      {/* About Us */}
       <View style={styles.section}>
         <EditableTextSection
           title="About Us"
           value={about}
-          isEditing={isEditing}
+          isEditing={isEditing && canEdit}
           onChange={setAbout}
         />
       </View>
 
-      {/* What to Expect */}
       <View style={styles.section}>
         <EditableTextSection
           title="What to Expect"
           value={whatToExpect}
-          isEditing={isEditing}
+          isEditing={isEditing && canEdit}
           onChange={setWhatToExpect}
         />
       </View>
 
-      {/* Achievements */}
       <View style={styles.section}>
         <EditableTextSection
           title="Achievements"
           value={achievements}
-          isEditing={isEditing}
+          isEditing={isEditing && canEdit}
           onChange={setAchievements}
         />
       </View>
 
-      {/* Gallery */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Gallery</Text>
+        <Text style={[styles.sectionTitle, { color: theme.text }]}>
+          Gallery
+        </Text>
         <ClubGallery />
       </View>
 
-      {/* Uploaded Files */}
-      <UploadedFilesList />
-
-      {/* Upload Section (Faculty) */}
-      <UploadFileSection />
+      {canEdit && (
+        <>
+          <UploadedFilesList />
+          <UploadFileSection />
+        </>
+      )}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 16,
-    backgroundColor: "#ffffff",
-  },
-  clubName: {
-    fontSize: 28,
-    fontWeight: "bold",
-    marginBottom: 20,
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: "600",
-    marginBottom: 8,
-  },
-  sectionText: {
-    fontSize: 14,
-    color: "#374151",
-    lineHeight: 20,
-  },
+  container: { flex: 1, padding: 16 },
+  clubName: { fontSize: 28, fontWeight: "bold", marginBottom: 20 },
+  section: { marginBottom: 24 },
+  sectionTitle: { fontSize: 20, fontWeight: "600", marginBottom: 8 },
 });

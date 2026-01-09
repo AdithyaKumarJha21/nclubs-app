@@ -1,45 +1,41 @@
 import { Stack } from "expo-router";
+import { AuthProvider } from "../context/AuthContext";
+import { ThemeProvider } from "../theme/ThemeContext";
 
 export default function RootLayout() {
   return (
-    <Stack>
-      {/* Entry / splash screen (we will later redirect to login) */}
-      <Stack.Screen
-        name="index"
-        options={{ title: "Welcome" }}
-      />
+    <AuthProvider>
+      <ThemeProvider>
+        <Stack>
+          {/* Entry / splash screen */}
+          <Stack.Screen
+            name="index"
+            options={{ title: "Welcome" }}
+          />
 
-      {/*
-        AuthStack:
-        - /login
-        - /signup
-      */}
-      <Stack.Screen
-        name="login"
-        options={{ title: "Login" }}
-      />
-      <Stack.Screen
-        name="signup"
-        options={{ title: "Signup" }}
-      />
+          {/* AuthStack */}
+          <Stack.Screen
+            name="login"
+            options={{ title: "Login" }}
+          />
+          <Stack.Screen
+            name="signup"
+            options={{ title: "Signup" }}
+          />
 
-      {/*
-        StudentStack:
-        - /student-home
-      */}
-      <Stack.Screen
-        name="student-home"
-        options={{ title: "Student Home" }}
-      />
+          {/* StudentStack */}
+          <Stack.Screen
+            name="student-home"
+            options={{ title: "Student Home" }}
+          />
 
-      {/*
-        FacultyStack:
-        - /faculty-home
-      */}
-      <Stack.Screen
-        name="faculty-home"
-        options={{ title: "Faculty Dashboard" }}
-      />
-    </Stack>
+          {/* FacultyStack */}
+          <Stack.Screen
+            name="faculty-home"
+            options={{ title: "Faculty Dashboard" }}
+          />
+        </Stack>
+      </ThemeProvider>
+    </AuthProvider>
   );
 }

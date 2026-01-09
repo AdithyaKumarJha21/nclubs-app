@@ -1,5 +1,6 @@
 import { useRouter } from "expo-router";
-import { FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { useTheme } from "../theme/ThemeContext";
 
 const mockEvents = [
   {
@@ -20,17 +21,23 @@ const mockEvents = [
 
 export default function EventsListScreen() {
   const router = useRouter();
+  const { theme } = useTheme();
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.heading}>Upcoming Events</Text>
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
+      <Text style={[styles.heading, { color: theme.text }]}>
+        Upcoming Events
+      </Text>
 
       <FlatList
         data={mockEvents}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <TouchableOpacity
-            style={styles.card}
+          <Pressable
+            style={({ pressed }) => [
+              styles.card,
+              pressed && { opacity: 0.7 },
+            ]}
             onPress={() =>
               router.push({
                 pathname: "/event-details",
@@ -42,7 +49,7 @@ export default function EventsListScreen() {
             <Text style={styles.meta}>
               {item.club} • {item.date}
             </Text>
-          </TouchableOpacity>
+          </Pressable>
         )}
       />
     </View>

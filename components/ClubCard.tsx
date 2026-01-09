@@ -1,16 +1,28 @@
-import { Image, StyleSheet, Text, View } from "react-native";
+import { useRouter } from "expo-router";
+import { Image, Pressable, StyleSheet, Text } from "react-native";
 
 type Props = {
+  id: string;
   name: string;
   logo: string;
 };
 
-export default function ClubCard({ name, logo }: Props) {
+export default function ClubCard({ id, name, logo }: Props) {
+  const router = useRouter();
+
   return (
-    <View style={styles.card}>
+    <Pressable
+      style={styles.card}
+      onPress={() =>
+        router.push({
+          pathname: "/club-profile",
+          params: { clubId: id },
+        })
+      }
+    >
       <Image source={{ uri: logo }} style={styles.logo} />
       <Text style={styles.name}>{name}</Text>
-    </View>
+    </Pressable>
   );
 }
 

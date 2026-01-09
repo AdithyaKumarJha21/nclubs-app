@@ -16,53 +16,81 @@ export default function SignupScreen() {
   const [usn, setUsn] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const handleSignupPress = async () => {
-  if (!name || !usn || !email || !password) {
-    Alert.alert("Missing details", "Please fill all the fields.");
-    return;
-  }
+    if (!name || !usn || !email || !password) {
+      Alert.alert("Missing details", "Please fill all the fields.");
+      return;
+    }
 
-  // 1. Create auth user
-  const { data, error } = await supabase.auth.signUp({
-    email: email.trim(),
-    password,
-  });
+    setLoading(true);
 
-  if (error) {
-    Alert.alert("Signup failed", error.message);
-    return;
-  }
+    /* ✅ SOLUTION 1 — CHECK USN UNIQUENESS (FRONTEND) */
+    const { data: existingProfile, error: usnCheckError } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("usn", usn)
+      .maybeSingle();
 
-  if (!data.user) {
-    Alert.alert("Error", "User not created.");
-    return;
-  }
+    if (existingProfile) {
+      Alert.alert(
+        "Signup failed",
+        "This USN is already registered."
+      );
+      setLoading(false);
+      return;
+    }
 
-  // 2. Save profile (SAFE method)
-  const { error: profileError } = await supabase
-    .from("profiles")
-    .upsert({
-      id: data.user.id,
-      name,
-      usn,
+    if (usnCheckError) {
+      Alert.alert("Error", usnCheckError.message);
+      setLoading(false);
+      return;
+    }
+
+    /* 1️⃣ CREATE AUTH USER */
+    const { data, error } = await supabase.auth.signUp({
       email: email.trim(),
+      password,
     });
 
-  if (profileError) {
+    if (error) {
+      Alert.alert("Signup failed", error.message);
+      setLoading(false);
+      return;
+    }
+
+    const user = data.user;
+    if (!user) {
+      Alert.alert("Error", "User not created.");
+      setLoading(false);
+      return;
+    }
+
+    /* 2️⃣ INSERT PROFILE */
+    const { error: profileError } = await supabase
+      .from("profiles")
+      .insert({
+        id: user.id,
+        name,
+        usn,
+        email: email.trim(),
+        // role_id handled by backend (default student)
+      });
+
+    if (profileError) {
+      Alert.alert("Signup failed", profileError.message);
+      setLoading(false);
+      return;
+    }
+
     Alert.alert(
-      "Profile error",
-      "Account created, but profile could not be saved."
+      "Signup successful 🎉",
+      "Please check your email to confirm your account."
     );
-    return;
-  }
 
-  Alert.alert(
-    "Signup successful 🎉",
-    "Please check your email to confirm your account."
-  );
-};
-
+    setLoading(false);
+  };
 
   return (
     <KeyboardAvoidingView
@@ -123,19 +151,22 @@ export default function SignupScreen() {
           />
           <Text style={styles.hintText}>
             Must be 8–15 characters with uppercase, lowercase, number & special
-            character. (We will enforce this rule later.)
+            character.
           </Text>
         </View>
 
-        {/* Signup button */}
-        <TouchableOpacity style={styles.signupButton} onPress={handleSignupPress}>
-          <Text style={styles.signupButtonText}>Create Account</Text>
+        <TouchableOpacity
+          style={styles.signupButton}
+          onPress={handleSignupPress}
+          disabled={loading}
+        >
+          <Text style={styles.signupButtonText}>
+            {loading ? "Creating..." : "Create Account"}
+          </Text>
         </TouchableOpacity>
 
-        {/* Info text */}
         <Text style={styles.helperText}>
-          After signup, your profile (name, USN, email, role) will be stored in
-          Supabase by Group 2 (backend).
+          Your profile will be securely stored after signup.
         </Text>
       </View>
     </KeyboardAvoidingView>
@@ -145,7 +176,7 @@ export default function SignupScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0f172a", // same dark background as login
+    backgroundColor: "#0f172a",
     alignItems: "center",
     justifyContent: "center",
     padding: 16,
@@ -157,10 +188,6 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingVertical: 24,
     paddingHorizontal: 20,
-    shadowColor: "#000",
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
     elevation: 6,
   },
   title: {
