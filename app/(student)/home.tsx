@@ -10,6 +10,7 @@ export default function StudentHome() {
       <Text style={styles.subtitle}>
         Explore your courses and activities here.
       </Text>
+      <Button title="View Clubs" onPress={() => router.push("/(student)/clubs")} />
       <Button title="Go to Home" onPress={() => router.replace("/")} />
     </View>
   );

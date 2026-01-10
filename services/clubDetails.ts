@@ -1,5 +1,15 @@
 import { supabase } from "./supabase";
 
+export async function fetchClubs() {
+  const { data, error } = await supabase
+    .from("clubs")
+    .select("*")
+    .order("name", { ascending: true });
+
+  if (error) throw error;
+  return data ?? [];
+}
+
 export async function getClubDetails(clubId: string) {
   // Fetch club row
   const { data: club, error: clubError } = await supabase
@@ -36,7 +46,7 @@ export async function getClubDetails(clubId: string) {
   }
 
   const gallery =
-    images?.map((img) => {
+    images?.map((img: any) => {
       const { data: urlData } = supabase.storage
         .from("club-gallery")
         .getPublicUrl(`${clubId}/${img.name}`);
