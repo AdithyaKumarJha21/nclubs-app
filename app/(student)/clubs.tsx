@@ -26,6 +26,9 @@ export default function ClubsList() {
 
   return (
     <View style={styles.container}>
+      <TouchableOpacity style={styles.backButton} onPress={() => router.push("/(student)/home")}>
+        <Text style={styles.backText}>Back to Home</Text>
+      </TouchableOpacity>
       <Text style={styles.title}>Clubs</Text>
       <FlatList
         data={clubs}
@@ -38,6 +41,8 @@ export default function ClubsList() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20 },
+  backButton: { alignSelf: "flex-start", marginBottom: 10, padding: 10, backgroundColor: "#007bff", borderRadius: 5 },
+  backText: { color: "white", fontSize: 16 },
   title: { fontSize: 24, fontWeight: "bold", marginBottom: 20 },
   clubItem: { flexDirection: "row", padding: 10, borderBottomWidth: 1, borderColor: "#ccc" },
   logo: { width: 50, height: 50, borderRadius: 25 },

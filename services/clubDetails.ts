@@ -16,13 +16,14 @@ export async function getClubDetails(clubId: string) {
     .from("clubs")
     .select("*")
     .eq("id", clubId)
-    .single();
+    .maybeSingle();
 
   if (clubError) {
     throw new Error(`Failed to fetch club: ${clubError.message}`);
   }
   if (!club) {
-    throw new Error("Club not found");
+    console.log("Club not found");
+    return null;
   }
 
   // Fetch sections in a deterministic order (explicit ascending)

@@ -1,10 +1,11 @@
-import { Slot, Stack } from "expo-router";
+import { Stack } from "expo-router";
 import { useEffect } from "react";
 import UserProvider from "../context/UserContext";
 import useAuthListener from "../hooks/useAuthListener";
 
-export default function RootLayout() {
-  useAuthListener(); // Must run OUTSIDE UserProvider
+function RootNav() {
+  // ✅ Must run inside UserProvider if it reads/sets context
+  useAuthListener();
 
   useEffect(() => {
     // Temporarily disabled for Expo Go compatibility
@@ -12,11 +13,13 @@ export default function RootLayout() {
     // registerDeviceForPush();
   }, []);
 
+  return <Stack screenOptions={{ headerShown: false }} />;
+}
+
+export default function RootLayout() {
   return (
     <UserProvider>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Slot />
-      </Stack>
+      <RootNav />
     </UserProvider>
   );
 }

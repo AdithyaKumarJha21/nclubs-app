@@ -112,7 +112,10 @@ export async function listClubFiles(clubId: string): Promise<ClubFileRow[]> {
     .eq("club_id", clubId)
     .order("created_at", { ascending: false });
 
-  if (error) throw new Error(normalizeFilesError(error));
+  if (error) {
+    console.error("listClubFiles error:", error);
+    throw new Error(normalizeFilesError(error));
+  }
   return (data ?? []) as ClubFileRow[];
 }
 
