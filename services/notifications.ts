@@ -1,64 +1,67 @@
-import { Platform } from "react-native";
-import OneSignal from "react-native-onesignal";
-import { supabase } from "./supabase";
+// services/notifications.ts
+import OneSignal from 'react-native-onesignal';
+import { supabase } from './supabase';
+import { Platform } from 'react-native';
 
-/**
- * Call once after app start (e.g. in root layout).
- */
+const ONESIGNAL_APP_ID = 'YOUR_ONESIGNAL_APP_ID'; // Replace with real one
+
 export function initOneSignal() {
-  // Put your OneSignal App ID here:
-  OneSignal.init("ONESIGNAL_APP_ID");
+  OneSignal.setAppId(ONESIGNAL_APP_ID);
 
-  // Recommended: ask permission (iOS) + Android 13+ prompt
-  OneSignal.requestPermissions({
-    iosSettings: {
-      alert: true,
-      badge: true,
-      sound: true,
-    },
+  // Prompt for push on iOS
+  OneSignal.promptForPushNotificationsWithUserResponse((granted) => {
+    console.log('Permission granted:', granted);
+  });
+
+  // Optional: Set notification handlers
+  OneSignal.setNotificationWillShowInForegroundHandler((event) => {
+    let notification = event.getNotification();
+    console.log('Notification in foreground:', notification);
+    event.complete(notification);
+  });
+
+  OneSignal.setNotificationOpenedHandler((openedEvent) => {
+    console.log('Notification opened:', openedEvent);
   });
 }
 
-/**
- * Store/refresh device token + OneSignal ID in Supabase user_devices table.
- * This is your "device registered" requirement.
- */
 export async function registerDeviceForPush() {
   const {
     data: { user },
-    error: userErr,
+    error,
   } = await supabase.auth.getUser();
 
-  if (userErr || !user) return;
+  if (error || !user) {
+    console.log('Not logged in, cannot register device.');
+    return;
+  }
 
-  // Get device state
-  const state = await OneSignal.getPermissionSubscriptionState();
+  const state = await OneSignal.getDeviceState();
 
-  // OneSignal's unique device identifier
-  const onesignalId = state?.subscriptionStatus?.userId;
-
-  // Native push subscription token
-  const token = state?.subscriptionStatus?.pushToken;
+  const onesignalId = state?.userId ?? null;
+  const token = state?.pushToken ?? null;
 
   const platform =
-    Platform.OS === "ios" ? "ios" : Platform.OS === "android" ? "android" : "web";
+    Platform.OS === 'ios' ? 'ios' : Platform.OS === 'android' ? 'android' : 'unknown';
 
-  // Upsert device record: one user can have multiple devices.
-  // We'll use onesignal_id as the "uniqueness" key client-side.
-  // If you want true uniqueness, create a unique index in DB on (user_id, onesignal_id).
-  const { error } = await supabase.from("user_devices").upsert(
+  if (!onesignalId || !token) {
+    console.warn('OneSignal device not ready yet.');
+    return;
+  }
+
+  const { error: upsertError } = await supabase.from('user_devices').upsert(
     {
       user_id: user.id,
-      onesignal_id: onesignalId ?? null,
-      device_token: token ?? null,
+      onesignal_id: onesignalId,
+      device_token: token,
       platform,
       active: true,
       updated_at: new Date().toISOString(),
     },
-    { onConflict: "user_id,onesignal_id" }
+    { onConflict: 'user_id,onesignal_id' }
   );
 
-  if (error) {
-    console.log("registerDeviceForPush error:", error);
+  if (upsertError) {
+    console.error('Failed to upsert device:', upsertError);
   }
 }

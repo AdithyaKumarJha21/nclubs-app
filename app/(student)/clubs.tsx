@@ -3,15 +3,23 @@ import { useEffect, useState } from "react";
 import { FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { fetchClubs } from "../../services/clubDetails";
 
+// Define or import Club type
+type Club = {
+  id: string;
+  name: string;
+  description?: string;
+  logo_url?: string;
+};
+
 export default function ClubsList() {
   const router = useRouter();
-  const [clubs, setClubs] = useState([]);
+  const [clubs, setClubs] = useState<Club[]>([]); // ✅ FIXED
 
   useEffect(() => {
     fetchClubs().then(setClubs).catch(console.error);
   }, []);
 
-  const renderClub = ({ item }) => (
+  const renderClub = ({ item }: { item: Club }) => ( // ✅ FIXED
     <TouchableOpacity
       style={styles.clubItem}
       onPress={() => router.push(`/club-details?clubId=${item.id}`)}
@@ -26,27 +34,39 @@ export default function ClubsList() {
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity style={styles.backButton} onPress={() => router.push("/(student)/home")}>
-        <Text style={styles.backText}>Back to Home</Text>
-      </TouchableOpacity>
       <Text style={styles.title}>Clubs</Text>
+
       <FlatList
         data={clubs}
         keyExtractor={(item) => item.id}
         renderItem={renderClub}
+        ListEmptyComponent={
+          <Text style={styles.emptyState}>No clubs found. Please check back later.</Text>
+        }
       />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20 },
-  backButton: { alignSelf: "flex-start", marginBottom: 10, padding: 10, backgroundColor: "#007bff", borderRadius: 5 },
-  backText: { color: "white", fontSize: 16 },
-  title: { fontSize: 24, fontWeight: "bold", marginBottom: 20 },
-  clubItem: { flexDirection: "row", padding: 10, borderBottomWidth: 1, borderColor: "#ccc" },
+  container: { flex: 1, padding: 20, backgroundColor: "#fff" },
+  title: { fontSize: 24, fontWeight: "bold", marginBottom: 20, textAlign: "center" },
+
+  clubItem: {
+    flexDirection: "row",
+    padding: 10,
+    borderBottomWidth: 1,
+    borderColor: "#ccc",
+  },
   logo: { width: 50, height: 50, borderRadius: 25 },
   textContainer: { flex: 1, marginLeft: 10 },
   name: { fontSize: 18, fontWeight: "bold" },
   description: { fontSize: 14, color: "#666" },
+
+  emptyState: {
+    textAlign: "center",
+    color: "#888",
+    marginTop: 40,
+    fontSize: 16,
+  },
 });

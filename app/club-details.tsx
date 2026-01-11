@@ -1,4 +1,4 @@
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { useContext, useEffect, useMemo, useState } from "react";
 import {
   Alert,
@@ -17,7 +17,7 @@ import { UserContext } from "../context/UserContext";
 import { getClubDetails } from "../services/clubDetails";
 import { updateClubSection } from "../services/clubSections";
 
-/** ---------- Types (match your Supabase schema loosely) ---------- */
+/** ---------- Types ---------- */
 type Club = {
   id: string;
   name?: string | null;
@@ -45,7 +45,7 @@ type EditableSection = {
   content: string;
   order_index: number;
 };
-/** ---------------------------------------------------------------- */
+/** -------------------------- */
 
 function asStringParam(v: string | string[] | undefined): string | null {
   if (!v) return null;
@@ -53,20 +53,17 @@ function asStringParam(v: string | string[] | undefined): string | null {
 }
 
 export default function ClubDetails() {
-  const router = useRouter();
   const params = useLocalSearchParams();
   const clubId = asStringParam((params as any).clubId ?? (params as any).id);
 
   const ctx = useContext(UserContext);
 
-  // Support BOTH styles: ctx.user.role (string) OR ctx.user.role_id (uuid)
   const isFaculty = useMemo(() => {
-    const role = (ctx as any)?.user?.role; // "student" | "faculty" | "admin"
-    const roleId = (ctx as any)?.user?.role_id; // uuid possibly
+    const role = (ctx as any)?.user?.role;
+    const roleId = (ctx as any)?.user?.role_id;
 
     if (role === "faculty" || role === "admin" || role === "staff") return true;
 
-    // If you truly use UUIDs in your DB, replace these with real role UUIDs.
     const STAFF_ROLE_UUID = "STAFF_ROLE_UUID";
     const ADMIN_ROLE_UUID = "ADMIN_ROLE_UUID";
     return roleId === STAFF_ROLE_UUID || roleId === ADMIN_ROLE_UUID;
@@ -79,7 +76,7 @@ export default function ClubDetails() {
 
   const loadDetails = async () => {
     if (!clubId) {
-      setErrorMsg("Missing club id in route.");
+      setErrorMsg("Missing club ID.");
       setLoading(false);
       return;
     }
@@ -89,10 +86,9 @@ export default function ClubDetails() {
 
     try {
       const res = await getClubDetails(clubId);
-      // getClubDetails might return null when not found
       if (!res || !res.club) {
         setDetails(null);
-        setErrorMsg("Club not found. Check clubId / database rows.");
+        setErrorMsg("Club not found.");
       } else {
         setDetails(res);
       }
@@ -107,7 +103,6 @@ export default function ClubDetails() {
 
   useEffect(() => {
     void loadDetails();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clubId]);
 
   const startEdit = (section: ClubSection) => {
@@ -134,7 +129,6 @@ export default function ClubDetails() {
       await loadDetails();
       Alert.alert("Saved", "Section updated successfully.");
     } catch (e: any) {
-      // Don’t expose raw DB errors; show friendly message
       console.error("updateClubSection error:", e);
       Alert.alert(
         "Not authorized",
@@ -156,31 +150,12 @@ export default function ClubDetails() {
     return (
       <View style={[styles.container, styles.center]}>
         <Text style={styles.errorText}>{errorMsg || "No data available."}</Text>
-
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-          <Text style={styles.backBtnText}>⬅ Back</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.retryBtn} onPress={loadDetails}>
-          <Text style={styles.retryBtnText}>Retry</Text>
-        </TouchableOpacity>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      {/* Top Nav */}
-      <View style={styles.topBar}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.topBtn}>
-          <Text style={styles.topBtnText}>⬅ Back</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={() => router.replace("/")} style={styles.topBtn}>
-          <Text style={styles.topBtnText}>🏠 Home</Text>
-        </TouchableOpacity>
-      </View>
-
       <ScrollView>
         <Text style={styles.title}>{details.club.name ?? "Unnamed Club"}</Text>
         {details.club.description ? (
@@ -248,7 +223,9 @@ export default function ClubDetails() {
         <FlatList
           data={details.gallery}
           keyExtractor={(item, index) => `${item}-${index}`}
-          renderItem={({ item }) => <Image source={{ uri: item }} style={styles.image} />}
+          renderItem={({ item }) => (
+            <Image source={{ uri: item }} style={styles.image} />
+          )}
           horizontal
           showsHorizontalScrollIndicator={false}
           ListEmptyComponent={
@@ -264,30 +241,34 @@ const styles = StyleSheet.create({
   container: { flex: 1, padding: 20, backgroundColor: "#fff" },
   center: { justifyContent: "center", alignItems: "center" },
 
-  topBar: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 12,
-  },
-  topBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: "#f2f2f2",
-    borderRadius: 8,
-  },
-  topBtnText: { fontWeight: "600" },
-
   title: { fontSize: 24, fontWeight: "bold" },
   description: { fontSize: 16, marginVertical: 10, color: "#444" },
 
   sectionTitle: { fontSize: 20, fontWeight: "bold", marginTop: 20 },
-  section: { marginVertical: 10, padding: 12, backgroundColor: "#f9f9f9", borderRadius: 10 },
+  section: {
+    marginVertical: 10,
+    padding: 12,
+    backgroundColor: "#f9f9f9",
+    borderRadius: 10,
+  },
   sectionTitleText: { fontSize: 18, fontWeight: "bold" },
   sectionContent: { marginTop: 6, color: "#333" },
 
-  input: { borderWidth: 1, padding: 10, marginVertical: 6, borderColor: "#ccc", borderRadius: 8, backgroundColor: "#fff" },
+  input: {
+    borderWidth: 1,
+    padding: 10,
+    marginVertical: 6,
+    borderColor: "#ccc",
+    borderRadius: 8,
+    backgroundColor: "#fff",
+  },
 
-  saveButton: { backgroundColor: "#28a745", padding: 12, borderRadius: 8, marginTop: 8 },
+  saveButton: {
+    backgroundColor: "#28a745",
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 8,
+  },
   buttonText: { color: "white", textAlign: "center", fontWeight: "700" },
 
   cancelButton: { marginTop: 10, alignSelf: "center" },
@@ -296,11 +277,13 @@ const styles = StyleSheet.create({
   editButton: { marginTop: 10, alignSelf: "flex-start" },
   editText: { color: "#007bff", fontWeight: "600" },
 
-  image: { width: 110, height: 110, margin: 6, borderRadius: 10, backgroundColor: "#eee" },
+  image: {
+    width: 110,
+    height: 110,
+    margin: 6,
+    borderRadius: 10,
+    backgroundColor: "#eee",
+  },
 
   errorText: { color: "red", marginBottom: 12, textAlign: "center" },
-  backBtn: { padding: 10, backgroundColor: "#f2f2f2", borderRadius: 8, marginBottom: 10 },
-  backBtnText: { fontWeight: "600" },
-  retryBtn: { padding: 10, backgroundColor: "#0066ff", borderRadius: 8 },
-  retryBtnText: { color: "#fff", fontWeight: "700" },
 });
