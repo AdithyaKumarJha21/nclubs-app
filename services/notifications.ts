@@ -1,55 +1,65 @@
-// services/notifications.ts
-import OneSignal from 'react-native-onesignal';
-import { supabase } from './supabase';
-import { Platform } from 'react-native';
+import { Platform } from "react-native";
+import OneSignal from "react-native-onesignal";
+import { supabase } from "./supabase";
 
-const ONESIGNAL_APP_ID = 'YOUR_ONESIGNAL_APP_ID'; // Replace with real one
+type ForegroundEvent = {
+  getNotification: () => unknown;
+  complete: (notification?: unknown) => void;
+};
 
-export function initOneSignal() {
-  OneSignal.setAppId(ONESIGNAL_APP_ID);
-
-  // Prompt for push on iOS
-  OneSignal.promptForPushNotificationsWithUserResponse((granted) => {
-    console.log('Permission granted:', granted);
-  });
-
-  // Optional: Set notification handlers
-  OneSignal.setNotificationWillShowInForegroundHandler((event) => {
-    let notification = event.getNotification();
-    console.log('Notification in foreground:', notification);
-    event.complete(notification);
-  });
-
-  OneSignal.setNotificationOpenedHandler((openedEvent) => {
-    console.log('Notification opened:', openedEvent);
-  });
-}
-
-export async function registerDeviceForPush() {
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  if (error || !user) {
-    console.log('Not logged in, cannot register device.');
+/**
+ * Init OneSignal ONCE (call from root layout).
+ * Compatible with react-native-onesignal v5.x (with local typings).
+ */
+export function initOneSignal(appId: string) {
+  if (!appId) {
+    console.warn("initOneSignal: missing OneSignal appId");
     return;
   }
 
-  const state = await OneSignal.getDeviceState();
+  OneSignal.initialize(appId);
 
+  // Ask permission (iOS + Android 13+)
+  // v5 API
+  void OneSignal.Notifications.requestPermission(true);
+
+  // Keep handler reference so removeEventListener works if you ever need it.
+  const handler = (event: ForegroundEvent) => {
+    try {
+      const notif = event.getNotification();
+      // show notification while foreground (optional)
+      event.complete(notif);
+    } catch {
+      // if anything fails, complete without showing
+      event.complete();
+    }
+  };
+
+  OneSignal.Notifications.addEventListener("foregroundWillDisplay", handler);
+}
+
+/**
+ * Register/refresh device token + OneSignal userId in Supabase user_devices.
+ */
+export async function registerDeviceForPush() {
+  const {
+    data: { user },
+    error: userErr,
+  } = await supabase.auth.getUser();
+
+  if (userErr || !user) return;
+
+  const state = await OneSignal.User.getDeviceState();
   const onesignalId = state?.userId ?? null;
   const token = state?.pushToken ?? null;
 
   const platform =
-    Platform.OS === 'ios' ? 'ios' : Platform.OS === 'android' ? 'android' : 'unknown';
+    Platform.OS === "ios" ? "ios" : Platform.OS === "android" ? "android" : "web";
 
-  if (!onesignalId || !token) {
-    console.warn('OneSignal device not ready yet.');
-    return;
-  }
+  // Avoid writing an empty record
+  if (!onesignalId && !token) return;
 
-  const { error: upsertError } = await supabase.from('user_devices').upsert(
+  const { error } = await supabase.from("user_devices").upsert(
     {
       user_id: user.id,
       onesignal_id: onesignalId,
@@ -58,10 +68,16 @@ export async function registerDeviceForPush() {
       active: true,
       updated_at: new Date().toISOString(),
     },
-    { onConflict: 'user_id,onesignal_id' }
+    { onConflict: "user_id,onesignal_id" }
   );
 
-  if (upsertError) {
-    console.error('Failed to upsert device:', upsertError);
+  if (error) console.log("registerDeviceForPush error:", error);
+}
+
+export async function hasPushPermission(): Promise<boolean> {
+  try {
+    return await OneSignal.Notifications.getPermissionAsync();
+  } catch {
+    return false;
   }
 }

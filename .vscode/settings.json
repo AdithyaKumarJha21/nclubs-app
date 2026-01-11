@@ -5,8 +5,9 @@
     "source.sortMembers": "explicit"
   },
   "deno.enable": true,
+  "deno.enablePaths": ["./supabase/functions"],
+  "deno.disablePaths": ["./node_modules"],
   "deno.lint": true,
-  "deno.unstable": true
+  "deno.unstable": true,
+  "deno.config": "./supabase/functions/deno.json"
 }
-
-
