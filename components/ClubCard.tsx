@@ -9,9 +9,12 @@ type Props = {
 export default function ClubCard({ name, logo, onPress }: Props) {
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.8}>
-      <View style={styles.logoContainer}>
-        <Image source={{ uri: logo }} style={styles.logo} />
+      <View style={styles.logoWrapper}>
+        {logo ? (
+          <Image source={{ uri: logo }} style={styles.logo} />
+        ) : null}
       </View>
+
       <Text style={styles.name} numberOfLines={2}>
         {name}
       </Text>
@@ -19,10 +22,12 @@ export default function ClubCard({ name, logo, onPress }: Props) {
   );
 }
 
+const LOGO_SIZE = 64;
+
 const styles = StyleSheet.create({
   card: {
     flex: 1,
-    aspectRatio: 1, // 🔥 ensures perfect square
+    aspectRatio: 1, // 🔥 perfect square card
     margin: 8,
     backgroundColor: "#ffffff",
     borderRadius: 12,
@@ -30,19 +35,29 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     elevation: 4,
   },
-  logoContainer: {
-    flex: 1,
+
+  // Circular container (prevents empty image issues)
+  logoWrapper: {
+    width: LOGO_SIZE,
+    height: LOGO_SIZE,
+    borderRadius: LOGO_SIZE / 2,
+    overflow: "hidden",
+    alignItems: "center",
     justifyContent: "center",
+    marginBottom: 8,
+    backgroundColor: "#f1f5f9", // fallback bg
   },
+
   logo: {
-    width: 60,
-    height: 60,
-    resizeMode: "contain",
+    width: "100%",
+    height: "100%",
+    resizeMode: "cover",
   },
+
   name: {
     fontSize: 14,
     fontWeight: "600",
-    marginBottom: 8,
     textAlign: "center",
+    paddingHorizontal: 6,
   },
 });
