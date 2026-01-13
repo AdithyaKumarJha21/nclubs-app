@@ -1,50 +1,48 @@
-import { useRouter } from "expo-router";
-import { Image, Pressable, StyleSheet, Text } from "react-native";
+import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 type Props = {
-  id: string;
   name: string;
   logo: string;
+  onPress: () => void;
 };
 
-export default function ClubCard({ id, name, logo }: Props) {
-  const router = useRouter();
-
+export default function ClubCard({ name, logo, onPress }: Props) {
   return (
-    <Pressable
-      style={styles.card}
-      onPress={() =>
-        router.push({
-          pathname: "/club-profile",
-          params: { clubId: id },
-        })
-      }
-    >
-      <Image source={{ uri: logo }} style={styles.logo} />
-      <Text style={styles.name}>{name}</Text>
-    </Pressable>
+    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.8}>
+      <View style={styles.logoContainer}>
+        <Image source={{ uri: logo }} style={styles.logo} />
+      </View>
+      <Text style={styles.name} numberOfLines={2}>
+        {name}
+      </Text>
+    </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
     flex: 1,
-    backgroundColor: "white",
-    margin: 6,
+    aspectRatio: 1, // 🔥 ensures perfect square
+    margin: 8,
+    backgroundColor: "#ffffff",
     borderRadius: 12,
-    padding: 10,
     alignItems: "center",
-    elevation: 3,
+    justifyContent: "center",
+    elevation: 4,
+  },
+  logoContainer: {
+    flex: 1,
+    justifyContent: "center",
   },
   logo: {
     width: 60,
     height: 60,
-    marginBottom: 8,
-    borderRadius: 30,
+    resizeMode: "contain",
   },
   name: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "600",
+    marginBottom: 8,
     textAlign: "center",
   },
 });
