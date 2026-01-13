@@ -19,6 +19,12 @@ import { useEditMode } from "../hooks/useEditMode";
 import { supabase } from "../services/supabase";
 import { useTheme } from "../theme/ThemeContext";
 
+// ✅ STEP 6 — centralized permissions
+import {
+  canEditClub,
+  canGenerateQR,
+} from "../utils/permissions";
+
 export default function ClubProfileScreen() {
   const { theme } = useTheme();
   const { user, loading } = useAuth();
@@ -52,15 +58,20 @@ export default function ClubProfileScreen() {
         return;
       }
 
-      // ✅ SOLUTION 4 — EMPTY DATA GUARD
       if (!data || data.length === 0) {
         setIsLoadingClub(false);
         return;
       }
 
-      const aboutSection = data.find(s => s.title === "About Us");
-      const expectSection = data.find(s => s.title === "What to Expect");
-      const achievementSection = data.find(s => s.title === "Achievements");
+      const aboutSection = data.find(
+        (s) => s.title === "About Us"
+      );
+      const expectSection = data.find(
+        (s) => s.title === "What to Expect"
+      );
+      const achievementSection = data.find(
+        (s) => s.title === "Achievements"
+      );
 
       setAbout(aboutSection?.content ?? "");
       setWhatToExpect(expectSection?.content ?? "");
@@ -73,7 +84,7 @@ export default function ClubProfileScreen() {
   }, [clubId]);
 
   /* ===============================
-     2️⃣ CHECK FACULTY ASSIGNMENT
+     2️⃣ CHECK FACULTY / PRESIDENT ASSIGNMENT
      =============================== */
   useEffect(() => {
     if (!user || !clubId) return;
@@ -83,7 +94,7 @@ export default function ClubProfileScreen() {
       return;
     }
 
-    if (user.role !== "faculty") {
+    if (user.role !== "faculty" && user.role !== "president") {
       setIsAssigned(false);
       return;
     }
@@ -105,11 +116,10 @@ export default function ClubProfileScreen() {
   if (loading || isLoadingClub) return null;
 
   /* ===============================
-     3️⃣ FINAL PERMISSION CHECK
+     3️⃣ FINAL PERMISSION CHECK (STEP-6)
      =============================== */
-  const canEdit =
-    user?.role === "admin" ||
-    (user?.role === "faculty" && isAssigned);
+  const canEdit = canEditClub(user, isAssigned);
+  const canQR = canGenerateQR(user, isAssigned); // ready for future QR UI
 
   /* ===============================
      4️⃣ SAVE (UPSERT — SAFE)
@@ -121,9 +131,24 @@ export default function ClubProfileScreen() {
       .from("club_sections")
       .upsert(
         [
-          { club_id: clubId, title: "About Us", content: about, order_index: 1 },
-          { club_id: clubId, title: "What to Expect", content: whatToExpect, order_index: 2 },
-          { club_id: clubId, title: "Achievements", content: achievements, order_index: 3 },
+          {
+            club_id: clubId,
+            title: "About Us",
+            content: about,
+            order_index: 1,
+          },
+          {
+            club_id: clubId,
+            title: "What to Expect",
+            content: whatToExpect,
+            order_index: 2,
+          },
+          {
+            club_id: clubId,
+            title: "Achievements",
+            content: achievements,
+            order_index: 3,
+          },
         ],
         { onConflict: "club_id,title" }
       );
@@ -137,27 +162,52 @@ export default function ClubProfileScreen() {
   };
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: theme.background }]}>
+    <ScrollView
+      style={[
+        styles.container,
+        { backgroundColor: theme.background },
+      ]}
+    >
       <Text style={[styles.clubName, { color: theme.text }]}>
         Club Profile
       </Text>
 
-      {canEdit && (
-        isEditing ? (
-          <View style={{ flexDirection: "row", gap: 16, marginBottom: 20 }}>
+      {canEdit &&
+        (isEditing ? (
+          <View
+            style={{
+              flexDirection: "row",
+              gap: 16,
+              marginBottom: 20,
+            }}
+          >
             <TouchableOpacity onPress={handleSaveEdit}>
-              <Text style={{ color: "green", fontWeight: "600" }}>Save</Text>
+              <Text
+                style={{ color: "green", fontWeight: "600" }}
+              >
+                Save
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={cancelEdit}>
-              <Text style={{ color: "red", fontWeight: "600" }}>Cancel</Text>
+              <Text
+                style={{ color: "red", fontWeight: "600" }}
+              >
+                Cancel
+              </Text>
             </TouchableOpacity>
           </View>
         ) : (
-          <TouchableOpacity onPress={startEdit} style={{ marginBottom: 20 }}>
-            <Text style={{ color: "blue", fontWeight: "600" }}>Edit</Text>
+          <TouchableOpacity
+            onPress={startEdit}
+            style={{ marginBottom: 20 }}
+          >
+            <Text
+              style={{ color: "blue", fontWeight: "600" }}
+            >
+              Edit
+            </Text>
           </TouchableOpacity>
-        )
-      )}
+        ))}
 
       <View style={styles.section}>
         <EditableTextSection
@@ -187,7 +237,12 @@ export default function ClubProfileScreen() {
       </View>
 
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>
+        <Text
+          style={[
+            styles.sectionTitle,
+            { color: theme.text },
+          ]}
+        >
           Gallery
         </Text>
         <ClubGallery />
@@ -205,7 +260,15 @@ export default function ClubProfileScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16 },
-  clubName: { fontSize: 28, fontWeight: "bold", marginBottom: 20 },
+  clubName: {
+    fontSize: 28,
+    fontWeight: "bold",
+    marginBottom: 20,
+  },
   section: { marginBottom: 24 },
-  sectionTitle: { fontSize: 20, fontWeight: "600", marginBottom: 8 },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: "600",
+    marginBottom: 8,
+  },
 });

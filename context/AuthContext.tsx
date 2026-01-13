@@ -1,9 +1,11 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "../services/supabase";
 
+type Role = "student" | "faculty" | "president" | "admin";
+
 type User = {
   id: string;
-  role: "student" | "faculty" | "admin";
+  role: Role;
 };
 
 type AuthContextType = {
@@ -34,14 +36,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const { data: profile, error } = await supabase
         .from("profiles")
-        .select("role_id")
+        .select("roles(name)")
         .eq("id", session.user.id)
         .single();
 
-      if (!error && profile) {
+      if (!error && profile?.roles) {
+        // 🔥 Normalize role safely (Supabase join returns array)
+        const roleRow = Array.isArray(profile.roles)
+          ? profile.roles[0]
+          : profile.roles;
+
+        const role = roleRow?.name as Role;
+
         setUser({
           id: session.user.id,
-          role: profile.role_id ? "faculty" : "student",
+          role: role ?? "student", // fallback safety
+        });
+      } else {
+        // Safety fallback
+        setUser({
+          id: session.user.id,
+          role: "student",
         });
       }
 

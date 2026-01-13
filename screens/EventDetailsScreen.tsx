@@ -1,9 +1,19 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
+import { useAuth } from "../context/AuthContext";
+import { canGenerateQR } from "../utils/permissions";
+
 export default function EventDetailsScreen() {
   const router = useRouter();
   const { title, date, venue, club } = useLocalSearchParams();
+
+  const { user } = useAuth();
+
+  // 🔐 STEP-7 (CLEANED): anyone except student is treated as assigned (temporary)
+  const isAssigned = user?.role !== "student";
+
+  const canQR = canGenerateQR(user, isAssigned);
 
   return (
     <View style={styles.container}>
@@ -17,12 +27,16 @@ export default function EventDetailsScreen() {
         This event will include workshops, activities, and hands-on sessions.
       </Text>
 
-      <TouchableOpacity
-        style={styles.button}
-        onPress={() => router.push("/qr-scanner")}
-      >
-        <Text style={styles.buttonText}>Scan QR for Attendance</Text>
-      </TouchableOpacity>
+      {canQR && (
+        <TouchableOpacity
+          style={styles.button}
+          onPress={() => router.push("/qr-scanner")}
+        >
+          <Text style={styles.buttonText}>
+            Generate / Scan QR for Attendance
+          </Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }

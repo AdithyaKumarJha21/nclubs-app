@@ -34,6 +34,12 @@ export default function RootLayout() {
             name="faculty-home"
             options={{ title: "Faculty Dashboard" }}
           />
+
+          {/* PresidentStack */}
+          <Stack.Screen
+            name="president-home"
+            options={{ title: "President Dashboard" }}
+          />
         </Stack>
       </ThemeProvider>
     </AuthProvider>
