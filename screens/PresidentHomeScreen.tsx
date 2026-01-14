@@ -1,10 +1,21 @@
 import { useRouter } from "expo-router";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../theme/ThemeContext";
 
 export default function PresidentHomeScreen() {
   const router = useRouter();
   const { theme } = useTheme();
+  const { user, loading } = useAuth();
+
+  /* ===============================
+     ROUTE PROTECTION (LOGIC ONLY)
+     =============================== */
+  if (loading) return null;
+
+  if (!user || user.role !== "president") {
+    return null; // later: redirect or show 403 screen
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>

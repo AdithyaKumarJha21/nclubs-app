@@ -19,11 +19,8 @@ import { useEditMode } from "../hooks/useEditMode";
 import { supabase } from "../services/supabase";
 import { useTheme } from "../theme/ThemeContext";
 
-// ✅ STEP 6 — centralized permissions
-import {
-  canEditClub,
-  canGenerateQR,
-} from "../utils/permissions";
+// ✅ CENTRALIZED CLUB PERMISSIONS ONLY
+import { canEditClub } from "../utils/permissions";
 
 export default function ClubProfileScreen() {
   const { theme } = useTheme();
@@ -116,10 +113,9 @@ export default function ClubProfileScreen() {
   if (loading || isLoadingClub) return null;
 
   /* ===============================
-     3️⃣ FINAL PERMISSION CHECK (STEP-6)
+     3️⃣ FINAL CLUB PERMISSION CHECK
      =============================== */
   const canEdit = canEditClub(user, isAssigned);
-  const canQR = canGenerateQR(user, isAssigned); // ready for future QR UI
 
   /* ===============================
      4️⃣ SAVE (UPSERT — SAFE)
