@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "../services/supabase";
 
-type Role = "student" | "faculty" | "president" | "admin";
+export type Role = "student" | "faculty" | "president" | "admin";
 
 type User = {
   id: string;
@@ -22,48 +22,54 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const loadUser = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+  const loadSession = async () => {
+    setLoading(true);
 
-      if (!session) {
-        setUser(null);
-        setLoading(false);
-        return;
-      }
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
 
-      const { data: profile, error } = await supabase
-        .from("profiles")
-        .select("roles(name)")
-        .eq("id", session.user.id)
-        .single();
-
-      if (!error && profile?.roles) {
-        // 🔥 Normalize role safely (Supabase join returns array)
-        const roleRow = Array.isArray(profile.roles)
-          ? profile.roles[0]
-          : profile.roles;
-
-        const role = roleRow?.name as Role;
-
-        setUser({
-          id: session.user.id,
-          role: role ?? "student", // fallback safety
-        });
-      } else {
-        // Safety fallback
-        setUser({
-          id: session.user.id,
-          role: "student",
-        });
-      }
-
+    if (!session) {
+      setUser(null);
       setLoading(false);
-    };
+      return;
+    }
 
-    loadUser();
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("roles(name)")
+      .eq("id", session.user.id)
+      .single();
+
+    if (error || !data?.roles) {
+      console.error("Role fetch failed", error);
+      setUser(null);
+      setLoading(false);
+      return;
+    }
+
+    const roleRow = Array.isArray(data.roles)
+      ? data.roles[0]
+      : data.roles;
+
+    setUser({
+      id: session.user.id,
+      role: roleRow.name as Role,
+    });
+
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadSession();
+
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      () => loadSession()
+    );
+
+    return () => {
+      listener.subscription.unsubscribe();
+    };
   }, []);
 
   return (

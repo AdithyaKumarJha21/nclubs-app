@@ -12,36 +12,47 @@ import {
 
 export default function EventDetailsScreen() {
   const router = useRouter();
-
-  const {
-    title,
-    date,
-    venue,
-    club,
-    start_time,
-    end_time,
-    qr_enabled,
-    status,
-  } = useLocalSearchParams();
-
   const { user } = useAuth();
 
+  const params = useLocalSearchParams<{
+    title?: string | string[];
+    date?: string | string[];
+    venue?: string | string[];
+    club?: string | string[];
+    start_time?: string | string[];
+    end_time?: string | string[];
+    qr_enabled?: string | string[];
+    status?: string | string[];
+  }>();
+
+  // ✅ normalize params
+  const normalize = (v?: string | string[]) =>
+    typeof v === "string" ? v : Array.isArray(v) ? v[0] : "";
+
+  const title = normalize(params.title);
+  const date = normalize(params.date);
+  const venue = normalize(params.venue);
+  const club = normalize(params.club);
+  const start_time = normalize(params.start_time);
+  const end_time = normalize(params.end_time);
+  const qr_enabled = normalize(params.qr_enabled);
+  const status = normalize(params.status);
+
   /* ===============================
-     EVENT OBJECT (TEMP SOURCE)
+     EVENT OBJECT
      =============================== */
   const event: Event = {
-    start_time: String(start_time),
-    end_time: String(end_time),
+    start_time,
+    end_time,
     qr_enabled: qr_enabled === "true",
     status: status === "expired" ? "expired" : "active",
   };
 
   /* ===============================
-     PERMISSION COMPUTATION (LOGIC ONLY)
+     PERMISSIONS (PURE LOGIC)
      =============================== */
   const canRegister = canRegisterForEvent(user, event);
   const canShowStudentQR = canShowQRToStudent(user, event);
-
   const canGenerate = canGenerateQR(user, event);
   const canDisable = canDisableQR(user, event);
 
@@ -57,14 +68,12 @@ export default function EventDetailsScreen() {
         This event will include workshops, activities, and hands-on sessions.
       </Text>
 
-      {/* STUDENT REGISTER */}
       {canRegister && (
         <TouchableOpacity style={styles.button}>
           <Text style={styles.buttonText}>Register for Event</Text>
         </TouchableOpacity>
       )}
 
-      {/* STUDENT QR (DURING EVENT) */}
       {canShowStudentQR && (
         <TouchableOpacity
           style={styles.button}
@@ -74,7 +83,6 @@ export default function EventDetailsScreen() {
         </TouchableOpacity>
       )}
 
-      {/* PRESIDENT / ADMIN QR CONTROLS */}
       {canGenerate && (
         <TouchableOpacity style={styles.button}>
           <Text style={styles.buttonText}>Generate QR</Text>

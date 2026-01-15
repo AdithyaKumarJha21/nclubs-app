@@ -1,10 +1,25 @@
 import { useRouter } from "expo-router";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+
+import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../theme/ThemeContext";
 
 export default function StudentHomeScreen() {
   const router = useRouter();
   const { theme } = useTheme();
+  const { user, loading } = useAuth();
+
+  /* ===============================
+     ROUTE PROTECTION (CORRECT)
+     =============================== */
+  if (loading) {
+    return null;
+  }
+
+  if (!user || user.role !== "student") {
+    router.replace("/login");
+    return null;
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -36,7 +51,7 @@ export default function StudentHomeScreen() {
         <Text style={styles.buttonText}>Attendance History</Text>
       </TouchableOpacity>
 
-      {/* 🔔 Notifications */}
+      {/* Notifications */}
       <TouchableOpacity
         style={styles.button}
         onPress={() => router.push("/notifications")}

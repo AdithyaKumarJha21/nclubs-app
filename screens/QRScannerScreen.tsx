@@ -1,6 +1,36 @@
+import { useRouter } from "expo-router";
+import { useEffect } from "react";
 import { Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
+import { useAuth } from "../context/AuthContext";
+import { canAccessQRScreen } from "../utils/permissions";
+
 export default function QRScannerScreen() {
+  const router = useRouter();
+  const { user, loading } = useAuth();
+
+  useEffect(() => {
+    if (loading) return;
+
+    if (!user) {
+      router.replace("/login");
+      return;
+    }
+
+    if (!canAccessQRScreen(user)) {
+      // 🚫 Unauthorized users go to their home
+      if (user.role === "student") {
+        router.replace("/student-home");
+      } else {
+        router.replace("/faculty-home");
+      }
+    }
+  }, [user, loading]);
+
+  if (loading || !user || !canAccessQRScreen(user)) {
+    return null;
+  }
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>QR Scanner</Text>

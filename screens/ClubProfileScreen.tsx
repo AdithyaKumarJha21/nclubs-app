@@ -19,13 +19,20 @@ import { useEditMode } from "../hooks/useEditMode";
 import { supabase } from "../services/supabase";
 import { useTheme } from "../theme/ThemeContext";
 
-// ✅ CENTRALIZED CLUB PERMISSIONS ONLY
 import { canEditClub } from "../utils/permissions";
 
 export default function ClubProfileScreen() {
   const { theme } = useTheme();
   const { user, loading } = useAuth();
-  const { clubId } = useLocalSearchParams<{ clubId?: string }>();
+  const { clubId } = useLocalSearchParams<{ clubId?: string | string[] }>();
+
+  // ✅ CRITICAL FIX — normalize route param
+  const normalizedClubId =
+    typeof clubId === "string"
+      ? clubId
+      : Array.isArray(clubId)
+      ? clubId[0]
+      : null;
 
   const { isEditing, startEdit, cancelEdit } = useEditMode();
 
@@ -37,16 +44,16 @@ export default function ClubProfileScreen() {
   const [achievements, setAchievements] = useState("");
 
   /* ===============================
-     1️⃣ FETCH CLUB SECTIONS (SAFE)
+     1️⃣ FETCH CLUB CONTENT
      =============================== */
   useEffect(() => {
-    if (!clubId) return;
+    if (!normalizedClubId) return;
 
     const loadClub = async () => {
       const { data, error } = await supabase
         .from("club_sections")
         .select("*")
-        .eq("club_id", clubId)
+        .eq("club_id", normalizedClubId)
         .order("order_index");
 
       if (error) {
@@ -55,36 +62,27 @@ export default function ClubProfileScreen() {
         return;
       }
 
-      if (!data || data.length === 0) {
-        setIsLoadingClub(false);
-        return;
-      }
-
-      const aboutSection = data.find(
-        (s) => s.title === "About Us"
+      setAbout(
+        data?.find((s) => s.title === "About Us")?.content ?? ""
       );
-      const expectSection = data.find(
-        (s) => s.title === "What to Expect"
+      setWhatToExpect(
+        data?.find((s) => s.title === "What to Expect")?.content ?? ""
       );
-      const achievementSection = data.find(
-        (s) => s.title === "Achievements"
+      setAchievements(
+        data?.find((s) => s.title === "Achievements")?.content ?? ""
       );
-
-      setAbout(aboutSection?.content ?? "");
-      setWhatToExpect(expectSection?.content ?? "");
-      setAchievements(achievementSection?.content ?? "");
 
       setIsLoadingClub(false);
     };
 
     loadClub();
-  }, [clubId]);
+  }, [normalizedClubId]);
 
   /* ===============================
      2️⃣ CHECK FACULTY / PRESIDENT ASSIGNMENT
      =============================== */
   useEffect(() => {
-    if (!user || !clubId) return;
+    if (!user || !normalizedClubId) return;
 
     if (user.role === "admin") {
       setIsAssigned(true);
@@ -101,53 +99,36 @@ export default function ClubProfileScreen() {
         .from("faculty_assignments")
         .select("id")
         .eq("faculty_id", user.id)
-        .eq("club_id", clubId)
-        .single();
+        .eq("club_id", normalizedClubId)
+        .limit(1);
 
-      setIsAssigned(!error && !!data);
+      setIsAssigned(!error && (data?.length ?? 0) > 0);
     };
 
     checkAssignment();
-  }, [user, clubId]);
+  }, [user, normalizedClubId]);
 
   if (loading || isLoadingClub) return null;
 
   /* ===============================
-     3️⃣ FINAL CLUB PERMISSION CHECK
+     3️⃣ PERMISSIONS
      =============================== */
   const canEdit = canEditClub(user, isAssigned);
 
   /* ===============================
-     4️⃣ SAVE (UPSERT — SAFE)
+     4️⃣ SAVE CONTENT
      =============================== */
   const handleSaveEdit = async () => {
-    if (!canEdit || !clubId) return;
+    if (!canEdit || !normalizedClubId) return;
 
-    const { error } = await supabase
-      .from("club_sections")
-      .upsert(
-        [
-          {
-            club_id: clubId,
-            title: "About Us",
-            content: about,
-            order_index: 1,
-          },
-          {
-            club_id: clubId,
-            title: "What to Expect",
-            content: whatToExpect,
-            order_index: 2,
-          },
-          {
-            club_id: clubId,
-            title: "Achievements",
-            content: achievements,
-            order_index: 3,
-          },
-        ],
-        { onConflict: "club_id,title" }
-      );
+    const { error } = await supabase.from("club_sections").upsert(
+      [
+        { club_id: normalizedClubId, title: "About Us", content: about, order_index: 1 },
+        { club_id: normalizedClubId, title: "What to Expect", content: whatToExpect, order_index: 2 },
+        { club_id: normalizedClubId, title: "Achievements", content: achievements, order_index: 3 },
+      ],
+      { onConflict: "club_id,title" }
+    );
 
     if (error) {
       Alert.alert("Error", error.message);
@@ -158,89 +139,33 @@ export default function ClubProfileScreen() {
   };
 
   return (
-    <ScrollView
-      style={[
-        styles.container,
-        { backgroundColor: theme.background },
-      ]}
-    >
+    <ScrollView style={[styles.container, { backgroundColor: theme.background }]}>
       <Text style={[styles.clubName, { color: theme.text }]}>
         Club Profile
       </Text>
 
       {canEdit &&
         (isEditing ? (
-          <View
-            style={{
-              flexDirection: "row",
-              gap: 16,
-              marginBottom: 20,
-            }}
-          >
+          <View style={{ flexDirection: "row", gap: 16, marginBottom: 20 }}>
             <TouchableOpacity onPress={handleSaveEdit}>
-              <Text
-                style={{ color: "green", fontWeight: "600" }}
-              >
-                Save
-              </Text>
+              <Text style={{ color: "green", fontWeight: "600" }}>Save</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={cancelEdit}>
-              <Text
-                style={{ color: "red", fontWeight: "600" }}
-              >
-                Cancel
-              </Text>
+              <Text style={{ color: "red", fontWeight: "600" }}>Cancel</Text>
             </TouchableOpacity>
           </View>
         ) : (
-          <TouchableOpacity
-            onPress={startEdit}
-            style={{ marginBottom: 20 }}
-          >
-            <Text
-              style={{ color: "blue", fontWeight: "600" }}
-            >
-              Edit
-            </Text>
+          <TouchableOpacity onPress={startEdit} style={{ marginBottom: 20 }}>
+            <Text style={{ color: "blue", fontWeight: "600" }}>Edit</Text>
           </TouchableOpacity>
         ))}
 
-      <View style={styles.section}>
-        <EditableTextSection
-          title="About Us"
-          value={about}
-          isEditing={isEditing && canEdit}
-          onChange={setAbout}
-        />
-      </View>
+      <EditableTextSection title="About Us" value={about} isEditing={isEditing && canEdit} onChange={setAbout} />
+      <EditableTextSection title="What to Expect" value={whatToExpect} isEditing={isEditing && canEdit} onChange={setWhatToExpect} />
+      <EditableTextSection title="Achievements" value={achievements} isEditing={isEditing && canEdit} onChange={setAchievements} />
 
       <View style={styles.section}>
-        <EditableTextSection
-          title="What to Expect"
-          value={whatToExpect}
-          isEditing={isEditing && canEdit}
-          onChange={setWhatToExpect}
-        />
-      </View>
-
-      <View style={styles.section}>
-        <EditableTextSection
-          title="Achievements"
-          value={achievements}
-          isEditing={isEditing && canEdit}
-          onChange={setAchievements}
-        />
-      </View>
-
-      <View style={styles.section}>
-        <Text
-          style={[
-            styles.sectionTitle,
-            { color: theme.text },
-          ]}
-        >
-          Gallery
-        </Text>
+        <Text style={[styles.sectionTitle, { color: theme.text }]}>Gallery</Text>
         <ClubGallery />
       </View>
 
@@ -256,15 +181,7 @@ export default function ClubProfileScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16 },
-  clubName: {
-    fontSize: 28,
-    fontWeight: "bold",
-    marginBottom: 20,
-  },
+  clubName: { fontSize: 28, fontWeight: "bold", marginBottom: 20 },
   section: { marginBottom: 24 },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: "600",
-    marginBottom: 8,
-  },
+  sectionTitle: { fontSize: 20, fontWeight: "600", marginBottom: 8 },
 });

@@ -18,23 +18,24 @@ export default function ClubsScreen() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const loadClubs = async () => {
-      const { data, error } = await supabase
-        .from("clubs")
-        .select("id, name, logo_url")
-        .order("name");
+  const loadClubs = async () => {
+    const { data, error } = await supabase
+      .from("clubs")
+      .select("id, name, logo_url")
+      .order("name");
 
-      if (error) {
-        console.error(error);
-        return;
-      }
-
-      setClubs(data ?? []);
+    if (error) {
+      console.error(error);
       setLoading(false);
-    };
+      return;
+    }
 
-    loadClubs();
-  }, []);
+    setClubs(data ?? []);
+    setLoading(false);
+  };
+
+  loadClubs();
+}, []);
 
   if (loading) return null;
 
