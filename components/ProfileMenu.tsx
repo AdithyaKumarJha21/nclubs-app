@@ -1,30 +1,36 @@
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
-import { useRouter } from "expo-router";
+import { Link } from "expo-router";
 
 export default function ProfileMenu() {
-  const router = useRouter();
-
   return (
     <View style={styles.menu}>
-      <TouchableOpacity onPress={() => router.push("/edit-profile")}>
-        <Text>Edit Profile</Text>
-      </TouchableOpacity>
+      <Link href="/edit-profile" asChild>
+        <TouchableOpacity>
+          <Text>Edit Profile</Text>
+        </TouchableOpacity>
+      </Link>
 
-      <TouchableOpacity onPress={() => router.push("/change-password")}>
-        <Text>Change Password</Text>
-      </TouchableOpacity>
+      <Link href="/change-password" asChild>
+        <TouchableOpacity>
+          <Text>Change Password</Text>
+        </TouchableOpacity>
+      </Link>
 
-      <TouchableOpacity onPress={() => router.push("/calendar")}>
-        <Text>Calendar</Text>
-      </TouchableOpacity>
+      <Link href="/calendar" asChild>
+        <TouchableOpacity>
+          <Text>Calendar</Text>
+        </TouchableOpacity>
+      </Link>
 
       <TouchableOpacity>
         <Text>Dark Mode</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity onPress={() => router.replace("/login")}>
-        <Text>Logout</Text>
-      </TouchableOpacity>
+      <Link href="/login" replace asChild>
+        <TouchableOpacity>
+          <Text>Logout</Text>
+        </TouchableOpacity>
+      </Link>
     </View>
   );
 }
