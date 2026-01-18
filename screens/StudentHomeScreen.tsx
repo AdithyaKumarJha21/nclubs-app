@@ -1,4 +1,5 @@
 import { useRouter } from "expo-router";
+import { useEffect } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 import { useAuth } from "../context/AuthContext";
@@ -10,14 +11,20 @@ export default function StudentHomeScreen() {
   const { user, loading } = useAuth();
 
   /* ===============================
-     ROUTE PROTECTION (CORRECT)
+     ROUTE PROTECTION (CORRECT WAY)
      =============================== */
-  if (loading) {
-    return null;
-  }
+  useEffect(() => {
+    if (loading) return;
 
-  if (!user || user.role !== "student") {
-    router.replace("/login");
+    if (!user || user.role !== "student") {
+      router.replace("/login");
+    }
+  }, [user, loading]);
+
+  /* ===============================
+     RENDER GUARD (NO NAVIGATION)
+     =============================== */
+  if (loading || !user || user.role !== "student") {
     return null;
   }
 
@@ -27,7 +34,6 @@ export default function StudentHomeScreen() {
         Student Dashboard
       </Text>
 
-      {/* Clubs */}
       <TouchableOpacity
         style={styles.button}
         onPress={() => router.push("/clubs")}
@@ -35,7 +41,6 @@ export default function StudentHomeScreen() {
         <Text style={styles.buttonText}>View Clubs</Text>
       </TouchableOpacity>
 
-      {/* Events */}
       <TouchableOpacity
         style={styles.button}
         onPress={() => router.push("/events")}
@@ -43,7 +48,6 @@ export default function StudentHomeScreen() {
         <Text style={styles.buttonText}>Events</Text>
       </TouchableOpacity>
 
-      {/* Attendance History */}
       <TouchableOpacity
         style={styles.button}
         onPress={() => router.push("/attendance-history")}
@@ -51,7 +55,6 @@ export default function StudentHomeScreen() {
         <Text style={styles.buttonText}>Attendance History</Text>
       </TouchableOpacity>
 
-      {/* Notifications */}
       <TouchableOpacity
         style={styles.button}
         onPress={() => router.push("/notifications")}
@@ -59,7 +62,6 @@ export default function StudentHomeScreen() {
         <Text style={styles.buttonText}>Notifications</Text>
       </TouchableOpacity>
 
-      {/* Settings */}
       <TouchableOpacity
         style={styles.button}
         onPress={() => router.push("/settings")}

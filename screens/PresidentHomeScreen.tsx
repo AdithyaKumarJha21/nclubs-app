@@ -1,4 +1,5 @@
 import { useRouter } from "expo-router";
+import { useEffect } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 import { useAuth } from "../context/AuthContext";
@@ -10,14 +11,20 @@ export default function PresidentHomeScreen() {
   const { user, loading } = useAuth();
 
   /* ===============================
-     ROUTE PROTECTION (CORRECT)
+     ROUTE PROTECTION (SAFE)
      =============================== */
-  if (loading) {
-    return null;
-  }
+  useEffect(() => {
+    if (loading) return;
 
-  if (!user || user.role !== "president") {
-    router.replace("/login");
+    if (!user || user.role !== "president") {
+      router.replace("/login");
+    }
+  }, [user, loading, router]);
+
+  /* ===============================
+     RENDER GUARD (NO NAVIGATION)
+     =============================== */
+  if (loading || !user || user.role !== "president") {
     return null;
   }
 

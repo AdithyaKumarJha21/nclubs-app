@@ -8,6 +8,14 @@ type User = {
   role: Role;
 };
 
+type RoleRow = {
+  name: string;
+};
+
+type ProfileRow = {
+  roles: RoleRow | RoleRow[] | null;
+};
+
 type AuthContextType = {
   user: User | null;
   loading: boolean;
@@ -25,47 +33,72 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const loadSession = async () => {
     setLoading(true);
 
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-    if (!session) {
+      if (!session) {
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("roles(name)")
+        .eq("id", session.user.id)
+        .single<ProfileRow>();
+
+      if (error || !data?.roles) {
+        console.error("Role fetch failed:", error);
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+
+      // ✅ FULLY TYPE-SAFE ROLE EXTRACTION
+      let roleName: string | undefined;
+
+      if (Array.isArray(data.roles)) {
+        roleName = data.roles[0]?.name;
+      } else {
+        roleName = data.roles.name;
+      }
+
+      if (!roleName) {
+        console.error("Invalid role data:", data.roles);
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+
+      const normalizedRole = roleName.toLowerCase() as Role;
+
+      console.log("✅ AUTH RESOLVED", {
+        userId: session.user.id,
+        role: normalizedRole,
+      });
+
+      setUser({
+        id: session.user.id,
+        role: normalizedRole,
+      });
+
+      setLoading(false);
+    } catch (err) {
+      console.error("Unexpected auth error:", err);
       setUser(null);
       setLoading(false);
-      return;
     }
-
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("roles(name)")
-      .eq("id", session.user.id)
-      .single();
-
-    if (error || !data?.roles) {
-      console.error("Role fetch failed", error);
-      setUser(null);
-      setLoading(false);
-      return;
-    }
-
-    const roleRow = Array.isArray(data.roles)
-      ? data.roles[0]
-      : data.roles;
-
-    setUser({
-      id: session.user.id,
-      role: roleRow.name as Role,
-    });
-
-    setLoading(false);
   };
 
   useEffect(() => {
     loadSession();
 
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      () => loadSession()
-    );
+    const { data: listener } = supabase.auth.onAuthStateChange(() => {
+      loadSession();
+    });
 
     return () => {
       listener.subscription.unsubscribe();
