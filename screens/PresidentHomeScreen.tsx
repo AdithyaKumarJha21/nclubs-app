@@ -150,7 +150,7 @@ export default function PresidentHomeScreen() {
 
       <TouchableOpacity
         style={styles.button}
-        onPress={() => router.push("/events")}
+        onPress={() => router.push("/event-management")}
       >
         <Text style={styles.buttonText}>Manage Events</Text>
       </TouchableOpacity>

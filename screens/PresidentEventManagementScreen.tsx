@@ -8,6 +8,9 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+import EventCreationModal, {
+    EventFormData,
+} from "../components/EventCreationModal";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabase";
 import { useTheme } from "../theme/ThemeContext";
@@ -39,6 +42,9 @@ export default function PresidentEventManagementScreen() {
   const [loading, setLoading] = useState(true);
   const [qrStatus, setQrStatus] = useState<QRStatus>({});
   const [generatingQR, setGeneratingQR] = useState<string>("");
+  const [creatingEvent, setCreatingEvent] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [deletingEventId, setDeletingEventId] = useState<string>("");
 
   useEffect(() => {
     if (user) {
@@ -161,18 +167,93 @@ export default function PresidentEventManagementScreen() {
     }
   };
 
-  if (loading) {
-    return (
-      <View
-        style={[
-          styles.container,
-          { backgroundColor: isDark ? "#1a1a1a" : "#fff" },
-        ]}
-      >
-        <ActivityIndicator size="large" color="#0066cc" />
-      </View>
+  const handleCreateEvent = async (formData: EventFormData) => {
+    if (!user) return;
+
+    try {
+      setCreatingEvent(true);
+
+      const { data, error } = await supabase
+        .from("events")
+        .insert({
+          title: formData.title,
+          event_date: formData.event_date,
+          start_time: formData.start_time,
+          end_time: formData.end_time,
+          location: formData.location,
+          description: formData.description || "",
+          created_by: user.id,
+          club_id: formData.club_id || user.id, // Use user ID if club_id not provided
+        })
+        .select();
+
+      if (error) throw error;
+
+      Alert.alert("Success", "Event created successfully!");
+      setShowCreateModal(false);
+      await fetchPresidentEvents();
+    } catch (error) {
+      console.error("Error creating event:", error);
+      Alert.alert("Error", "Failed to create event");
+    } finally {
+      setCreatingEvent(false);
+    }
+  };
+
+  const handleDeleteEvent = (eventId: string, eventTitle: string) => {
+    Alert.alert(
+      "Delete Event",
+      `Are you sure you want to delete "${eventTitle}"? This action cannot be undone.`,
+      [
+        {
+          text: "Cancel",
+          onPress: () => {},
+          style: "cancel",
+        },
+        {
+          text: "Delete",
+          onPress: () => deleteEvent(eventId),
+          style: "destructive",
+        },
+      ]
     );
-  }
+  };
+
+  const deleteEvent = async (eventId: string) => {
+    try {
+      setDeletingEventId(eventId);
+
+      // Delete associated QR sessions first
+      await supabase.from("qr_sessions").delete().eq("event_id", eventId);
+
+      // Delete associated event registrations
+      await supabase
+        .from("event_registrations")
+        .delete()
+        .eq("event_id", eventId);
+
+      // Delete associated attendance records
+      await supabase.from("attendance").delete().eq("event_id", eventId);
+
+      // Delete the event
+      const { error } = await supabase
+        .from("events")
+        .delete()
+        .eq("id", eventId)
+        .eq("created_by", user?.id); // Ensure they can only delete their own events
+
+      if (error) throw error;
+
+      Alert.alert("Success", "Event deleted successfully!");
+      await fetchPresidentEvents();
+      await fetchQRStatus();
+    } catch (error) {
+      console.error("Error deleting event:", error);
+      Alert.alert("Error", "Failed to delete event");
+    } finally {
+      setDeletingEventId("");
+    }
+  };
 
   return (
     <View
@@ -181,16 +262,28 @@ export default function PresidentEventManagementScreen() {
         { backgroundColor: isDark ? "#1a1a1a" : "#fff" },
       ]}
     >
-      <Text
-        style={[
-          styles.heading,
-          { color: isDark ? "#fff" : "#000" },
-        ]}
-      >
-        My Events - QR Management
-      </Text>
+      <View style={styles.headerContainer}>
+        <Text
+          style={[
+            styles.heading,
+            { color: isDark ? "#fff" : "#000" },
+          ]}
+        >
+          My Events - QR Management
+        </Text>
+        <TouchableOpacity
+          style={styles.createButton}
+          onPress={() => setShowCreateModal(true)}
+        >
+          <Text style={styles.createButtonText}>+ Add Event</Text>
+        </TouchableOpacity>
+      </View>
 
-      {events.length === 0 ? (
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#0066cc" />
+        </View>
+      ) : events.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Text
             style={[
@@ -198,7 +291,7 @@ export default function PresidentEventManagementScreen() {
               { color: isDark ? "#aaa" : "#666" },
             ]}
           >
-            No events created yet
+            No events created yet. Tap "+ Add Event" to create one!
           </Text>
         </View>
       ) : (
@@ -288,12 +381,36 @@ export default function PresidentEventManagementScreen() {
                       </Text>
                     </TouchableOpacity>
                   )}
+
+                  <TouchableOpacity
+                    style={[
+                      styles.button,
+                      styles.deleteButton,
+                      { opacity: deletingEventId === item.id ? 0.6 : 1 },
+                    ]}
+                    onPress={() =>
+                      handleDeleteEvent(item.id, item.title)
+                    }
+                    disabled={deletingEventId === item.id}
+                  >
+                    <Text style={styles.buttonText}>
+                      {deletingEventId === item.id ? "..." : "Delete"}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             );
           }}
         />
       )}
+
+      {/* Event Creation Modal */}
+      <EventCreationModal
+        visible={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onSubmit={handleCreateEvent}
+        loading={creatingEvent}
+      />
     </View>
   );
 }
@@ -303,10 +420,32 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
   },
+  headerContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
   heading: {
     fontSize: 22,
     fontWeight: "700",
-    marginBottom: 16,
+    flex: 1,
+  },
+  createButton: {
+    backgroundColor: "#0066cc",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+  },
+  createButtonText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 12,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
   },
   emptyContainer: {
     flex: 1,
@@ -315,6 +454,8 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 14,
+    textAlign: "center",
+    paddingHorizontal: 20,
   },
   eventCard: {
     padding: 14,
@@ -363,6 +504,9 @@ const styles = StyleSheet.create({
   },
   disableButton: {
     backgroundColor: "#f44336",
+  },
+  deleteButton: {
+    backgroundColor: "#ff6b6b",
   },
   buttonText: {
     color: "#fff",
