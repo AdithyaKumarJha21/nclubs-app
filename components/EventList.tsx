@@ -1,28 +1,30 @@
-import { FlatList, StyleSheet, Text, View } from "react-native";
+import { FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useTheme } from "../theme/ThemeContext";
 
-export interface AttendanceEvent {
+export type EventListItem = {
   id: string;
   title: string;
   date?: string;
-  attended?: boolean;
-}
+  club_id?: string;
+};
 
-interface AttendanceListProps {
-  events: AttendanceEvent[];
+interface EventListProps {
+  events: EventListItem[];
+  onSelectEvent: (event: EventListItem) => void;
   isLoading?: boolean;
 }
 
-export default function AttendanceList({
+export default function EventList({
   events,
+  onSelectEvent,
   isLoading = false,
-}: AttendanceListProps) {
+}: EventListProps) {
   const { isDark } = useTheme();
 
   if (isLoading) {
     return (
       <View style={styles.centerContainer}>
-        <Text>Loading attendance history...</Text>
+        <Text>Loading events...</Text>
       </View>
     );
   }
@@ -30,9 +32,7 @@ export default function AttendanceList({
   if (!events || events.length === 0) {
     return (
       <View style={styles.centerContainer}>
-        <Text style={{ color: isDark ? "#aaa" : "#666" }}>
-          No attendance records yet.
-        </Text>
+        <Text>No events found.</Text>
       </View>
     );
   }
@@ -42,13 +42,14 @@ export default function AttendanceList({
       data={events}
       keyExtractor={(item) => item.id}
       renderItem={({ item }) => (
-        <View
+        <TouchableOpacity
           style={[
-            styles.eventRow,
-            { backgroundColor: isDark ? "#333" : "#f9f9f9" },
+            styles.eventItem,
+            { backgroundColor: isDark ? "#333" : "#f5f5f5" },
           ]}
+          onPress={() => onSelectEvent(item)}
         >
-          <View style={styles.eventInfo}>
+          <View>
             <Text
               style={[
                 styles.eventTitle,
@@ -68,17 +69,7 @@ export default function AttendanceList({
               </Text>
             )}
           </View>
-          <View
-            style={[
-              styles.checkmark,
-              {
-                backgroundColor: item.attended ? "#4caf50" : "transparent",
-              },
-            ]}
-          >
-            {item.attended && <Text style={styles.checkmarkText}>✓</Text>}
-          </View>
-        </View>
+        </TouchableOpacity>
       )}
       scrollEnabled={true}
     />
@@ -92,39 +83,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 16,
   },
-  eventRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    marginBottom: 10,
+  eventItem: {
+    padding: 16,
+    marginBottom: 12,
     borderRadius: 8,
     borderLeftWidth: 4,
     borderLeftColor: "#0066cc",
   },
-  eventInfo: {
-    flex: 1,
-  },
   eventTitle: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: "600",
     marginBottom: 4,
   },
   eventDate: {
     fontSize: 12,
-  },
-  checkmark: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    justifyContent: "center",
-    alignItems: "center",
-    marginLeft: 12,
-  },
-  checkmarkText: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "bold",
   },
 });

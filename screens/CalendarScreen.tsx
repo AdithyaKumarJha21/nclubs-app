@@ -1,10 +1,23 @@
-import { View, Text } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import CalendarGrid from "../components/CalendarGrid";
+import { useTheme } from "../theme/ThemeContext";
 
 export default function CalendarScreen() {
+  const { isDark } = useTheme();
+
   return (
-    <View style={{ flex: 1, padding: 16 }}>
-      <Text style={{ fontSize: 22, fontWeight: "700", marginBottom: 12 }}>
+    <View
+      style={[
+        styles.container,
+        { backgroundColor: isDark ? "#1a1a1a" : "#fff" },
+      ]}
+    >
+      <Text
+        style={[
+          styles.title,
+          { color: isDark ? "#fff" : "#000" },
+        ]}
+      >
         Calendar
       </Text>
 
@@ -12,3 +25,15 @@ export default function CalendarScreen() {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    padding: 16,
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: "700",
+    marginBottom: 12,
+  },
+});
