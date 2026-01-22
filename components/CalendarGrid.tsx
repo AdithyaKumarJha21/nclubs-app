@@ -20,10 +20,13 @@ export default function CalendarGrid() {
   const [eventsByDate, setEventsByDate] = useState<EventsByDate>({});
   const [isLoading, setIsLoading] = useState(false);
 
+  console.log("🚀 CalendarGrid component loaded!");
+
   /* ===============================
      📅 UPDATE CALENDAR MONTH
      =============================== */
   useEffect(() => {
+    console.log("📅 useEffect triggered! Current date:", currentDate);
     const month = generateCalendarMonth(
       currentDate.getFullYear(),
       currentDate.getMonth()
