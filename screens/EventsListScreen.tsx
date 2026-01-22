@@ -14,16 +14,16 @@ import { useTheme } from "../theme/ThemeContext";
 type EventItem = {
   id: string;
   title: string;
-  date: string;
-  venue: string;
-  club: string;
+  event_date: string;
+  location: string;
   start_time: string;
   end_time: string;
+  description?: string;
 };
 
 export default function EventsListScreen() {
   const router = useRouter();
-  const { theme } = useTheme();
+  const { isDark } = useTheme();
   const [events, setEvents] = useState<EventItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -38,7 +38,8 @@ export default function EventsListScreen() {
       // ✅ FETCH ALL EVENTS FROM DATABASE
       const { data, error } = await supabase
         .from("events")
-        .select("id, title, date, venue, club, start_time, end_time");
+        .select("id, title, event_date, location, start_time, end_time, description")
+        .order("event_date", { ascending: true });
 
       if (error) {
         console.error("Error fetching events:", error);
@@ -47,11 +48,11 @@ export default function EventsListScreen() {
         return;
       }
 
-      // ✅ FILTER OUT EXPIRED EVENTS (END TIME IN THE PAST)
+      // ✅ FILTER OUT EXPIRED EVENTS (EVENT DATE IN THE FUTURE)
       const now = new Date();
       const upcomingEvents = (data || []).filter((event: any) => {
-        const endTime = new Date(event.end_time);
-        return endTime > now; // Only show if end_time is in the future
+        const eventDate = new Date(event.event_date);
+        return eventDate >= now; // Only show future events
       });
 
       setEvents(upcomingEvents);
@@ -65,20 +66,40 @@ export default function EventsListScreen() {
 
   if (loading) {
     return (
-      <View style={[styles.container, { backgroundColor: theme.background }]}>
-        <ActivityIndicator size="large" color={theme.text} />
+      <View
+        style={[
+          styles.container,
+          { backgroundColor: isDark ? "#1a1a1a" : "#fff" },
+        ]}
+      >
+        <ActivityIndicator size="large" color="#0066cc" />
       </View>
     );
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <Text style={[styles.heading, { color: theme.text }]}>
+    <View
+      style={[
+        styles.container,
+        { backgroundColor: isDark ? "#1a1a1a" : "#fff" },
+      ]}
+    >
+      <Text
+        style={[
+          styles.heading,
+          { color: isDark ? "#fff" : "#000" },
+        ]}
+      >
         Upcoming Events
       </Text>
 
       {events.length === 0 ? (
-        <Text style={[styles.emptyText, { color: theme.text }]}>
+        <Text
+          style={[
+            styles.emptyText,
+            { color: isDark ? "#aaa" : "#666" },
+          ]}
+        >
           No upcoming events at the moment.
         </Text>
       ) : (
@@ -89,24 +110,42 @@ export default function EventsListScreen() {
             <Pressable
               style={({ pressed }) => [
                 styles.card,
-                { backgroundColor: theme.card || "#f9fafb" },
+                {
+                  backgroundColor: isDark ? "#2a2a2a" : "#f9fafb",
+                },
                 pressed && { opacity: 0.7 },
               ]}
               onPress={() =>
                 router.push({
                   pathname: "/event-details",
-                  params: item,
+                  params: { eventId: item.id },
                 })
               }
             >
-              <Text style={[styles.title, { color: theme.text }]}>
+              <Text
+                style={[
+                  styles.title,
+                  { color: isDark ? "#fff" : "#000" },
+                ]}
+              >
                 {item.title}
               </Text>
-              <Text style={[styles.meta, { color: theme.text }]}>
-                {item.club} • {item.date}
+              <Text
+                style={[
+                  styles.meta,
+                  { color: isDark ? "#aaa" : "#666" },
+                ]}
+              >
+                📅 {new Date(item.event_date).toLocaleDateString()} at{" "}
+                {item.start_time}
               </Text>
-              <Text style={[styles.meta, { color: theme.text }]}>
-                Venue: {item.venue}
+              <Text
+                style={[
+                  styles.meta,
+                  { color: isDark ? "#aaa" : "#666" },
+                ]}
+              >
+                📍 {item.location || "TBA"}
               </Text>
             </Pressable>
           )}
@@ -135,13 +174,16 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 10,
     marginBottom: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: "#0066cc",
   },
   title: {
     fontSize: 16,
     fontWeight: "600",
+    marginBottom: 6,
   },
   meta: {
     fontSize: 12,
-    marginTop: 4,
+    marginTop: 3,
   },
 });

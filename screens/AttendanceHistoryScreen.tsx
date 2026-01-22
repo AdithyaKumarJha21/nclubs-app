@@ -106,11 +106,11 @@ export default function AttendanceHistoryScreen() {
 
       if (eventsError) throw eventsError;
 
-      // Fetch QR scans for this student
+      // Fetch attendance records for this student
       const { data: scanData, error: scanError } = await supabase
-        .from("qr_scans")
+        .from("attendance")
         .select("event_id")
-        .eq("profile_id", user.id);
+        .eq("student_id", user.id);
 
       if (scanError) throw scanError;
 
@@ -148,16 +148,16 @@ export default function AttendanceHistoryScreen() {
     try {
       setIsLoading(true);
 
-      // Get QR records for this event
+      // Get attendance records for this event
       const { data, error } = await supabase
-        .from("qr_scans")
+        .from("attendance")
         .select(
           `
           id,
           scanned_at,
-          profiles:profile_id (
+          profiles:student_id (
             id,
-            full_name,
+            name,
             email,
             usn
           )
@@ -170,7 +170,7 @@ export default function AttendanceHistoryScreen() {
 
       const students: AttendanceStudent[] = (data || []).map((scan: any) => ({
         id: scan.profiles?.id || scan.id,
-        name: scan.profiles?.full_name || "Unknown",
+        name: scan.profiles?.name || "Unknown",
         email: scan.profiles?.email,
         usn: scan.profiles?.usn,
         scan_time: scan.scanned_at,
