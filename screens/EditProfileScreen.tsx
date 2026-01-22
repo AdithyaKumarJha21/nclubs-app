@@ -31,13 +31,13 @@ export default function EditProfileScreen() {
       // Fetch profile data
       const { data: profileData, error: profileError } = await supabase
         .from("profiles")
-        .select("full_name, email")
+        .select("name, email")
         .eq("id", user.id)
         .single();
 
       if (profileError) throw profileError;
 
-      setFullName(profileData?.full_name || "");
+      setFullName(profileData?.name || "");
       setEmail(profileData?.email || "");
     } catch (error) {
       console.error("Error fetching user data:", error);
@@ -70,7 +70,7 @@ export default function EditProfileScreen() {
       const { error: profileError } = await supabase
         .from("profiles")
         .update({
-          full_name: fullName.trim(),
+          name: fullName.trim(),
           email: email.trim(),
         })
         .eq("id", user.id);
