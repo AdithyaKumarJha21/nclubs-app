@@ -1,28 +1,231 @@
-import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { useRouter } from "expo-router";
+import { useEffect, useState } from "react";
+import {
+    ActivityIndicator,
+    Alert,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from "react-native";
+import { useAuth } from "../context/AuthContext";
+import { supabase } from "../services/supabase";
+import { useTheme } from "../theme/ThemeContext";
 
 export default function NotificationComposerScreen() {
-  return (
-    <View style={styles.container}>
-      <Text style={styles.heading}>Send Notification</Text>
+  const router = useRouter();
+  const { theme } = useTheme();
+  const { user } = useAuth();
+  const [title, setTitle] = useState("");
+  const [message, setMessage] = useState("");
+  const [club, setClub] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [notificationsToday, setNotificationsToday] = useState(0);
+  const [canSend, setCanSend] = useState(false);
 
-      <TextInput style={styles.input} placeholder="Title" />
-      <TextInput style={[styles.input, styles.textArea]} placeholder="Message" multiline />
+  useEffect(() => {
+    checkNotificationLimit();
+  }, []);
+
+  const checkNotificationLimit = async () => {
+    try {
+      // ✅ CHECK IF USER IS FACULTY/PRESIDENT/ADMIN
+      if (!user || (user.role !== "faculty" && user.role !== "president" && user.role !== "admin")) {
+        Alert.alert("Error", "Only faculty or president can send notifications");
+        router.back();
+        return;
+      }
+
+      // ✅ GET TODAY'S DATE RANGE
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      // ✅ COUNT NOTIFICATIONS CREATED TODAY
+      const { data, error } = await supabase
+        .from("notifications")
+        .select("id", { count: "exact" })
+        .gte("created_at", today.toISOString())
+        .lt("created_at", tomorrow.toISOString());
+
+      if (error) {
+        console.error("Error checking notification limit:", error);
+        setCanSend(false);
+        return;
+      }
+
+      const count = data?.length || 0;
+      setNotificationsToday(count);
+      setCanSend(count < 2); // Allow up to 2 per day
+    } catch (err) {
+      console.error("Unexpected error:", err);
+      setCanSend(false);
+    }
+  };
+
+  const handleSendNotification = async () => {
+    if (!title.trim() || !message.trim() || !club.trim()) {
+      Alert.alert("Error", "Please fill in all fields");
+      return;
+    }
+
+    if (!canSend) {
+      Alert.alert(
+        "Limit Reached",
+        `You can only send 2 notifications per day. You've already sent ${notificationsToday} today.`
+      );
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const { error } = await supabase.from("notifications").insert({
+        title: title.trim(),
+        message: message.trim(),
+        club: club.trim(),
+        created_at: new Date().toISOString(),
+      });
+
+      if (error) {
+        Alert.alert("Error", "Failed to send notification");
+        console.error("Insert error:", error);
+        setLoading(false);
+        return;
+      }
+
+      Alert.alert("Success", "Notification sent!");
+      setTitle("");
+      setMessage("");
+      setClub("");
+      setNotificationsToday(notificationsToday + 1);
+      setCanSend(notificationsToday + 1 < 2);
+
+      // Navigate back after 1 second
+      setTimeout(() => {
+        router.back();
+      }, 1000);
+    } catch (err) {
+      Alert.alert("Error", "An unexpected error occurred");
+      console.error("Unexpected error:", err);
+      setLoading(false);
+    }
+  };
+
+  return (
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
+      <Text style={[styles.heading, { color: theme.text }]}>
+        Send Notification
+      </Text>
+
+      <Text style={[styles.limitText, { color: theme.text }]}>
+        Notifications sent today: {notificationsToday}/2
+      </Text>
+
+      <TextInput
+        style={[
+          styles.input,
+          { borderColor: theme.text, color: theme.text },
+        ]}
+        placeholder="Title"
+        placeholderTextColor={theme.text}
+        value={title}
+        onChangeText={setTitle}
+        editable={!loading}
+      />
+
+      <TextInput
+        style={[
+          styles.input,
+          styles.textArea,
+          { borderColor: theme.text, color: theme.text },
+        ]}
+        placeholder="Message"
+        placeholderTextColor={theme.text}
+        multiline
+        value={message}
+        onChangeText={setMessage}
+        editable={!loading}
+      />
+
+      <TextInput
+        style={[
+          styles.input,
+          { borderColor: theme.text, color: theme.text },
+        ]}
+        placeholder="Club Name"
+        placeholderTextColor={theme.text}
+        value={club}
+        onChangeText={setClub}
+        editable={!loading}
+      />
 
       <TouchableOpacity
-        style={styles.button}
-        onPress={() => Alert.alert("Sent", "Cooldown logic will be added later")}
+        style={[
+          styles.button,
+          {
+            backgroundColor: canSend ? "#2563eb" : "#d1d5db",
+            opacity: loading ? 0.6 : 1,
+          },
+        ]}
+        onPress={handleSendNotification}
+        disabled={!canSend || loading}
       >
-        <Text style={styles.buttonText}>Send</Text>
+        {loading ? (
+          <ActivityIndicator color="white" />
+        ) : (
+          <Text style={styles.buttonText}>Send Notification</Text>
+        )}
       </TouchableOpacity>
+
+      {!canSend && (
+        <Text style={[styles.warningText, { color: "#ef4444" }]}>
+          You've reached the 2 notifications per day limit. Try again tomorrow.
+        </Text>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 16 },
-  heading: { fontSize: 22, fontWeight: "700", marginBottom: 12 },
-  input: { borderWidth: 1, borderColor: "#d1d5db", borderRadius: 8, padding: 10, marginBottom: 12 },
-  textArea: { height: 100 },
-  button: { backgroundColor: "#2563eb", padding: 14, borderRadius: 10, alignItems: "center" },
-  buttonText: { color: "white", fontWeight: "600" }
+  container: {
+    flex: 1,
+    padding: 16,
+  },
+  heading: {
+    fontSize: 22,
+    fontWeight: "700",
+    marginBottom: 12,
+  },
+  limitText: {
+    fontSize: 12,
+    marginBottom: 16,
+    fontWeight: "500",
+  },
+  input: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 12,
+  },
+  textArea: {
+    height: 100,
+  },
+  button: {
+    padding: 14,
+    borderRadius: 10,
+    alignItems: "center",
+    marginTop: 8,
+  },
+  buttonText: {
+    color: "white",
+    fontWeight: "600",
+  },
+  warningText: {
+    fontSize: 12,
+    marginTop: 12,
+    textAlign: "center",
+  },
 });
