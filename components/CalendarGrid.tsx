@@ -39,36 +39,35 @@ export default function CalendarGrid() {
     try {
       setIsLoading(true);
 
-      // Get first and last day of month
-      const firstDay = new Date(year, month, 1);
-      const lastDay = new Date(year, month + 1, 0);
-
-      // Fetch events for this month
+      // Fetch all events (we'll filter by date in client)
       const { data, error } = await supabase
         .from("events")
         .select("id, title, event_date, club_id")
-        .gte("event_date", firstDay.toISOString())
-        .lte("event_date", lastDay.toISOString());
+        .order("event_date", { ascending: true });
 
       if (error) throw error;
 
-      // Group events by date
+      // Group events by date for this month
       const groupedEvents: EventsByDate = {};
       const colors = ["#ff6b6b", "#4ecdc4", "#45b7d1", "#f9ca24", "#6c5ce7"];
 
       (data || []).forEach((event: any, index: number) => {
         const eventDate = new Date(event.event_date);
-        const dateKey = getDateKey(eventDate);
+        
+        // Filter only events in the current month/year
+        if (eventDate.getFullYear() === year && eventDate.getMonth() === month) {
+          const dateKey = getDateKey(eventDate);
 
-        if (!groupedEvents[dateKey]) {
-          groupedEvents[dateKey] = [];
+          if (!groupedEvents[dateKey]) {
+            groupedEvents[dateKey] = [];
+          }
+
+          groupedEvents[dateKey].push({
+            id: event.id,
+            title: event.title,
+            color: colors[groupedEvents[dateKey].length % colors.length],
+          });
         }
-
-        groupedEvents[dateKey].push({
-          id: event.id,
-          title: event.title,
-          color: colors[groupedEvents[dateKey].length % colors.length],
-        });
       });
 
       setEventsByDate(groupedEvents);
