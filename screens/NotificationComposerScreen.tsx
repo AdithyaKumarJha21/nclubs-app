@@ -18,8 +18,7 @@ export default function NotificationComposerScreen() {
   const { theme } = useTheme();
   const { user } = useAuth();
   const [title, setTitle] = useState("");
-  const [message, setMessage] = useState("");
-  const [club, setClub] = useState("");
+  const [body, setBody] = useState("");
   const [loading, setLoading] = useState(false);
   const [notificationsToday, setNotificationsToday] = useState(0);
   const [canSend, setCanSend] = useState(false);
@@ -66,7 +65,7 @@ export default function NotificationComposerScreen() {
   };
 
   const handleSendNotification = async () => {
-    if (!title.trim() || !message.trim() || !club.trim()) {
+    if (!title.trim() || !body.trim()) {
       Alert.alert("Error", "Please fill in all fields");
       return;
     }
@@ -84,8 +83,7 @@ export default function NotificationComposerScreen() {
     try {
       const { error } = await supabase.from("notifications").insert({
         title: title.trim(),
-        message: message.trim(),
-        club: club.trim(),
+        body: body.trim(),
         created_at: new Date().toISOString(),
       });
 
@@ -98,8 +96,7 @@ export default function NotificationComposerScreen() {
 
       Alert.alert("Success", "Notification sent!");
       setTitle("");
-      setMessage("");
-      setClub("");
+      setBody("");
       setNotificationsToday(notificationsToday + 1);
       setCanSend(notificationsToday + 1 < 2);
 
@@ -142,23 +139,11 @@ export default function NotificationComposerScreen() {
           styles.textArea,
           { borderColor: theme.text, color: theme.text },
         ]}
-        placeholder="Message"
+        placeholder="Body"
         placeholderTextColor={theme.text}
         multiline
-        value={message}
-        onChangeText={setMessage}
-        editable={!loading}
-      />
-
-      <TextInput
-        style={[
-          styles.input,
-          { borderColor: theme.text, color: theme.text },
-        ]}
-        placeholder="Club Name"
-        placeholderTextColor={theme.text}
-        value={club}
-        onChangeText={setClub}
+        value={body}
+        onChangeText={setBody}
         editable={!loading}
       />
 

@@ -18,8 +18,7 @@ import { useTheme } from "../theme/ThemeContext";
 type Notification = {
   id: string;
   title: string;
-  message: string;
-  club: string;
+  body: string;
   created_at: string;
 };
 
@@ -44,7 +43,7 @@ export default function NotificationsInboxScreen() {
       // ✅ FETCH ALL NOTIFICATIONS FROM DATABASE
       const { data, error } = await supabase
         .from("notifications")
-        .select("id, title, message, club, created_at")
+        .select("id, title, body, created_at")
         .order("created_at", { ascending: false });
 
       if (error) {
@@ -164,10 +163,7 @@ export default function NotificationsInboxScreen() {
                     {item.title}
                   </Text>
                   <Text style={[styles.message, { color: theme.text }]}>
-                    {item.message}
-                  </Text>
-                  <Text style={[styles.meta, { color: "#6b7280" }]}>
-                    {item.club}
+                    {item.body}
                   </Text>
                 </View>
                 {(user?.role === "faculty" ||
