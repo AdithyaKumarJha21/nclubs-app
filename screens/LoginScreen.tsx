@@ -1,14 +1,14 @@
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    KeyboardAvoidingView,
+    Platform,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { supabase } from "../services/supabase";
 
@@ -82,6 +82,8 @@ export default function LoginScreen() {
     /* 3️⃣ ROLE-BASED REDIRECT */
     if (role === "faculty" || role === "admin") {
       router.replace("/faculty-home");
+    } else if (role === "president") {
+      router.replace("/president-home");
     } else {
       router.replace("/student-home");
     }
