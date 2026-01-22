@@ -47,15 +47,33 @@ export default function CalendarGrid() {
 
       if (error) throw error;
 
+      console.log("📅 Total events fetched:", data?.length || 0);
+      console.log("📅 Looking for events in year:", year, "month:", month);
+
       // Group events by date for this month
       const groupedEvents: EventsByDate = {};
       const colors = ["#ff6b6b", "#4ecdc4", "#45b7d1", "#f9ca24", "#6c5ce7"];
 
-      (data || []).forEach((event: any, index: number) => {
-        const eventDate = new Date(event.event_date);
+      (data || []).forEach((event: any) => {
+        // Parse the timestamptz format properly
+        let eventDate;
+        try {
+          // Handle various date formats: ISO string, timestamptz, etc.
+          eventDate = new Date(event.event_date);
+        } catch (e) {
+          console.error("Failed to parse date:", event.event_date);
+          return;
+        }
+
+        // Get the date components
+        const eventYear = eventDate.getFullYear();
+        const eventMonth = eventDate.getMonth();
+        const eventDay = eventDate.getDate();
+
+        console.log(`📅 Event: "${event.title}" | Date: ${event.event_date} | Parsed: ${eventYear}-${eventMonth}-${eventDay}`);
         
         // Filter only events in the current month/year
-        if (eventDate.getFullYear() === year && eventDate.getMonth() === month) {
+        if (eventYear === year && eventMonth === month) {
           const dateKey = getDateKey(eventDate);
 
           if (!groupedEvents[dateKey]) {
@@ -67,12 +85,15 @@ export default function CalendarGrid() {
             title: event.title,
             color: colors[groupedEvents[dateKey].length % colors.length],
           });
+
+          console.log(`✅ Added to calendar: ${event.title} on ${dateKey}`);
         }
       });
 
+      console.log("📅 Events grouped for display:", groupedEvents);
       setEventsByDate(groupedEvents);
     } catch (error) {
-      console.error("Error fetching events:", error);
+      console.error("❌ Error fetching events:", error);
     } finally {
       setIsLoading(false);
     }
