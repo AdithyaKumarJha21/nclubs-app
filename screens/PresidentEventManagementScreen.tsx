@@ -67,7 +67,7 @@ export default function PresidentEventManagementScreen() {
       const { data, error } = await supabase
         .from("president_assignments")
         .select("club_id")
-        .eq("president_id", user.id)
+        .eq("user_id", user.id)
         .single();
 
       if (error) {
