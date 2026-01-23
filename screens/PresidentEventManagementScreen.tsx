@@ -173,17 +173,33 @@ export default function PresidentEventManagementScreen() {
     try {
       setCreatingEvent(true);
 
+      // Convert date string (YYYY-MM-DD) and time strings (HH:MM) to ISO timestamps
+      const eventDate = new Date(formData.event_date);
+      const [startHour, startMin] = formData.start_time.split(":").map(Number);
+      const [endHour, endMin] = formData.end_time.split(":").map(Number);
+
+      const startDateTime = new Date(eventDate);
+      startDateTime.setHours(startHour, startMin, 0, 0);
+      const startTime = startDateTime.toISOString();
+
+      const endDateTime = new Date(eventDate);
+      endDateTime.setHours(endHour, endMin, 0, 0);
+      const endTime = endDateTime.toISOString();
+
+      const eventDateTime = eventDate.toISOString();
+
       const { data, error } = await supabase
         .from("events")
         .insert({
           title: formData.title,
-          event_date: formData.event_date,
-          start_time: formData.start_time,
-          end_time: formData.end_time,
+          event_date: eventDateTime,
+          start_time: startTime,
+          end_time: endTime,
           location: formData.location,
           description: formData.description || "",
           created_by: user.id,
           club_id: formData.club_id || user.id, // Use user ID if club_id not provided
+          status: "active",
         })
         .select();
 
@@ -194,7 +210,7 @@ export default function PresidentEventManagementScreen() {
       await fetchPresidentEvents();
     } catch (error) {
       console.error("Error creating event:", error);
-      Alert.alert("Error", "Failed to create event");
+      Alert.alert("Error", "Failed to create event. Please check your input.");
     } finally {
       setCreatingEvent(false);
     }
