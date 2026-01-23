@@ -203,7 +203,7 @@ export default function PresidentEventManagementScreen() {
         location: formData.location.trim(),
         description: (formData.description || "").trim(),
         created_by: user.id,
-        club_id: formData.club_id || user.id,
+        club_id: formData.club_id || null, // Allow null if not specified
         status: "active",
       };
 
