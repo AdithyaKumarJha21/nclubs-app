@@ -45,9 +45,11 @@ export default function PresidentEventManagementScreen() {
   const [creatingEvent, setCreatingEvent] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [deletingEventId, setDeletingEventId] = useState<string>("");
+  const [clubId, setClubId] = useState<string | null>(null);
 
   useEffect(() => {
     if (user) {
+      fetchPresidentClubId();
       fetchPresidentEvents();
       fetchQRStatus();
       // Poll for QR status
@@ -55,6 +57,43 @@ export default function PresidentEventManagementScreen() {
       return () => clearInterval(interval);
     }
   }, [user]);
+
+  const fetchPresidentClubId = async () => {
+    if (!user) return;
+    try {
+      console.log("🔍 Fetching club_id for president:", user.id);
+
+      // Fetch from roles table to get the club_id
+      const { data, error } = await supabase
+        .from("roles")
+        .select("club_id")
+        .eq("user_id", user.id)
+        .single();
+
+      if (error) {
+        console.error("Error fetching club_id from roles:", error);
+        // Try from profiles table as fallback
+        const { data: profileData, error: profileError } = await supabase
+          .from("profiles")
+          .select("club_id")
+          .eq("id", user.id)
+          .single();
+
+        if (profileError) {
+          console.error("Error fetching club_id from profiles:", profileError);
+          return;
+        }
+
+        console.log("✅ Club ID from profiles:", profileData?.club_id);
+        setClubId(profileData?.club_id || null);
+      } else {
+        console.log("✅ Club ID from roles:", data?.club_id);
+        setClubId(data?.club_id || null);
+      }
+    } catch (error) {
+      console.error("Error fetching club ID:", error);
+    }
+  };
 
   const fetchPresidentEvents = async () => {
     if (!user) return;
@@ -195,6 +234,12 @@ export default function PresidentEventManagementScreen() {
 
       console.log("📅 Converted timestamps:", { event_date, start_time, end_time });
 
+      if (!clubId) {
+        Alert.alert("Error", "Unable to determine your club. Please try again.");
+        setCreatingEvent(false);
+        return;
+      }
+
       const insertPayload = {
         title: formData.title.trim(),
         event_date,
@@ -203,7 +248,7 @@ export default function PresidentEventManagementScreen() {
         location: formData.location.trim(),
         description: (formData.description || "").trim(),
         created_by: user.id,
-        club_id: formData.club_id || null, // Allow null if not specified
+        club_id: clubId, // Use fetched club_id
         status: "active",
       };
 
