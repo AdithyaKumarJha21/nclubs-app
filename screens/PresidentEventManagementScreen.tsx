@@ -1,15 +1,15 @@
 import { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import EventCreationModal, {
-    EventFormData,
+  EventFormData,
 } from "../components/EventCreationModal";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabase";
@@ -81,7 +81,7 @@ export default function PresidentEventManagementScreen() {
     try {
       const { data, error } = await supabase
         .from("qr_sessions")
-        .select("event_id, status, generated_at, generated_by");
+        .select("event_id, status, generated_by");
 
       if (error) throw error;
 
@@ -91,7 +91,7 @@ export default function PresidentEventManagementScreen() {
           statusMap[qr.event_id] = {
             isActive: true,
             generatedBy: qr.generated_by,
-            generatedAt: qr.generated_at,
+            generatedAt: new Date().toISOString(),
           };
         }
       });
@@ -131,6 +131,7 @@ export default function PresidentEventManagementScreen() {
             token: `QR-${Date.now()}-${Math.random()}`, // Generate unique token
             status: "active",
             generated_by: user.id,
+            created_at: new Date().toISOString(),
           });
 
         if (error) throw error;
@@ -138,9 +139,10 @@ export default function PresidentEventManagementScreen() {
 
       Alert.alert("Success", "QR code generated and activated!");
       await fetchQRStatus();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error generating QR:", error);
-      Alert.alert("Error", "Failed to generate QR code");
+      const errorMsg = error?.message || "Failed to generate QR code";
+      Alert.alert("Error", errorMsg);
     } finally {
       setGeneratingQR("");
     }
@@ -159,9 +161,10 @@ export default function PresidentEventManagementScreen() {
 
       Alert.alert("Success", "QR code disabled!");
       await fetchQRStatus();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error disabling QR:", error);
-      Alert.alert("Error", "Failed to disable QR code");
+      const errorMsg = error?.message || "Failed to disable QR code";
+      Alert.alert("Error", errorMsg);
     } finally {
       setGeneratingQR("");
     }
