@@ -61,37 +61,24 @@ export default function PresidentEventManagementScreen() {
   const fetchPresidentClubId = async () => {
     if (!user) return;
     try {
-      console.log("🔍 Fetching club_id for president:", user.id);
+      console.log("🔍 Fetching club_id from president_assignments for:", user.id);
 
-      // Fetch from roles table to get the club_id
+      // Fetch from president_assignments table to get the club_id
       const { data, error } = await supabase
-        .from("roles")
+        .from("president_assignments")
         .select("club_id")
-        .eq("user_id", user.id)
+        .eq("president_id", user.id)
         .single();
 
       if (error) {
-        console.error("Error fetching club_id from roles:", error);
-        // Try from profiles table as fallback
-        const { data: profileData, error: profileError } = await supabase
-          .from("profiles")
-          .select("club_id")
-          .eq("id", user.id)
-          .single();
-
-        if (profileError) {
-          console.error("Error fetching club_id from profiles:", profileError);
-          return;
-        }
-
-        console.log("✅ Club ID from profiles:", profileData?.club_id);
-        setClubId(profileData?.club_id || null);
-      } else {
-        console.log("✅ Club ID from roles:", data?.club_id);
-        setClubId(data?.club_id || null);
+        console.error("❌ Error fetching club_id from president_assignments:", error);
+        return;
       }
+
+      console.log("✅ Club ID from president_assignments:", data?.club_id);
+      setClubId(data?.club_id || null);
     } catch (error) {
-      console.error("Error fetching club ID:", error);
+      console.error("❌ Error fetching club ID:", error);
     }
   };
 
