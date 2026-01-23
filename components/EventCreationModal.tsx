@@ -78,14 +78,26 @@ export default function EventCreationModal({
     // Validate time format
     const timeRegex = /^\d{2}:\d{2}$/;
     if (!timeRegex.test(formData.start_time)) {
-      Alert.alert("Error", "Start time must be in HH:MM format");
+      Alert.alert("Error", "Start time must be in HH:MM format (e.g., 14:30)");
       return;
     }
     if (!timeRegex.test(formData.end_time)) {
-      Alert.alert("Error", "End time must be in HH:MM format");
+      Alert.alert("Error", "End time must be in HH:MM format (e.g., 16:00)");
       return;
     }
 
+    // Validate that end time is after start time
+    const [startH, startM] = formData.start_time.split(":").map(Number);
+    const [endH, endM] = formData.end_time.split(":").map(Number);
+    const startMins = startH * 60 + startM;
+    const endMins = endH * 60 + endM;
+
+    if (endMins <= startMins) {
+      Alert.alert("Error", "End time must be after start time");
+      return;
+    }
+
+    console.log("📋 Submitting event form data:", formData);
     onSubmit(formData);
   };
 

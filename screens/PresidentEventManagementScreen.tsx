@@ -173,44 +173,67 @@ export default function PresidentEventManagementScreen() {
     try {
       setCreatingEvent(true);
 
-      // Convert date string (YYYY-MM-DD) and time strings (HH:MM) to ISO timestamps
-      const eventDate = new Date(formData.event_date);
+      console.log("📝 Creating event with data:", formData);
+
+      // Parse the date
+      const [year, month, day] = formData.event_date.split("-").map(Number);
       const [startHour, startMin] = formData.start_time.split(":").map(Number);
       const [endHour, endMin] = formData.end_time.split(":").map(Number);
 
-      const startDateTime = new Date(eventDate);
-      startDateTime.setHours(startHour, startMin, 0, 0);
-      const startTime = startDateTime.toISOString();
+      // Create Date objects in UTC
+      const eventDateObj = new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
+      const startDateObj = new Date(Date.UTC(year, month - 1, day, startHour, startMin, 0));
+      const endDateObj = new Date(Date.UTC(year, month - 1, day, endHour, endMin, 0));
 
-      const endDateTime = new Date(eventDate);
-      endDateTime.setHours(endHour, endMin, 0, 0);
-      const endTime = endDateTime.toISOString();
+      // Convert to ISO strings
+      const event_date = eventDateObj.toISOString();
+      const start_time = startDateObj.toISOString();
+      const end_time = endDateObj.toISOString();
 
-      const eventDateTime = eventDate.toISOString();
+      console.log("📅 Converted timestamps:", { event_date, start_time, end_time });
+
+      const insertPayload = {
+        title: formData.title.trim(),
+        event_date,
+        start_time,
+        end_time,
+        location: formData.location.trim(),
+        description: (formData.description || "").trim(),
+        created_by: user.id,
+        club_id: formData.club_id || user.id,
+        status: "active",
+      };
+
+      console.log("📤 Insert payload:", insertPayload);
 
       const { data, error } = await supabase
         .from("events")
-        .insert({
-          title: formData.title,
-          event_date: eventDateTime,
-          start_time: startTime,
-          end_time: endTime,
-          location: formData.location,
-          description: formData.description || "",
-          created_by: user.id,
-          club_id: formData.club_id || user.id, // Use user ID if club_id not provided
-          status: "active",
-        })
-        .select();
+        .insert(insertPayload);
 
-      if (error) throw error;
+      if (error) {
+        console.error("❌ Database insert error:", {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+        });
+        throw new Error(
+          `Database error: ${error.message}${error.details ? ` - ${error.details}` : ""}`
+        );
+      }
+
+      console.log("✅ Event created successfully");
 
       Alert.alert("Success", "Event created successfully!");
       setShowCreateModal(false);
-      await fetchPresidentEvents();
-    } catch (error) {
-      console.error("Error creating event:", error);
-      Alert.alert("Error", "Failed to create event. Please check your input.");
+      
+      // Refresh the events list
+      setTimeout(() => {
+        fetchPresidentEvents();
+      }, 500);
+    } catch (error: any) {
+      console.error("❌ Error creating event:", error);
+      const errorMsg = error?.message || error?.toString() || "Unknown error";
+      Alert.alert("Error Creating Event", errorMsg);
     } finally {
       setCreatingEvent(false);
     }
