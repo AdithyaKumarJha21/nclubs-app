@@ -12,6 +12,8 @@ import EventCreationModal, {
   EventFormData,
 } from "../components/EventCreationModal";
 import { useAuth } from "../context/AuthContext";
+import { getMyClubId } from "../services/assignments";
+import { createEvent } from "../services/events";
 import { supabase } from "../services/supabase";
 import { useTheme } from "../theme/ThemeContext";
 
@@ -49,7 +51,7 @@ export default function PresidentEventManagementScreen() {
 
   useEffect(() => {
     if (user) {
-      fetchPresidentClubId();
+      fetchClubId();
       fetchPresidentEvents();
       fetchQRStatus();
       // Poll for QR status
@@ -58,27 +60,14 @@ export default function PresidentEventManagementScreen() {
     }
   }, [user]);
 
-  const fetchPresidentClubId = async () => {
+  const fetchClubId = async () => {
     if (!user) return;
     try {
-      console.log("🔍 Fetching club_id from president_assignments for:", user.id);
-
-      // Fetch from president_assignments table to get the club_id
-      const { data, error } = await supabase
-        .from("president_assignments")
-        .select("club_id")
-        .eq("user_id", user.id)
-        .single();
-
-      if (error) {
-        console.error("❌ Error fetching club_id from president_assignments:", error);
-        return;
-      }
-
-      console.log("✅ Club ID from president_assignments:", data?.club_id);
-      setClubId(data?.club_id || null);
+      const resolvedClubId = await getMyClubId(user);
+      setClubId(resolvedClubId);
     } catch (error) {
       console.error("❌ Error fetching club ID:", error);
+      setClubId(null);
     }
   };
 
@@ -204,59 +193,21 @@ export default function PresidentEventManagementScreen() {
 
       console.log("📝 Creating event with data:", formData);
 
-      // Parse the date
-      const [year, month, day] = formData.event_date.split("-").map(Number);
-      const [startHour, startMin] = formData.start_time.split(":").map(Number);
-      const [endHour, endMin] = formData.end_time.split(":").map(Number);
-
-      // Create Date objects in UTC
-      const eventDateObj = new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
-      const startDateObj = new Date(Date.UTC(year, month - 1, day, startHour, startMin, 0));
-      const endDateObj = new Date(Date.UTC(year, month - 1, day, endHour, endMin, 0));
-
-      // Convert to ISO strings
-      const event_date = eventDateObj.toISOString();
-      const start_time = startDateObj.toISOString();
-      const end_time = endDateObj.toISOString();
-
-      console.log("📅 Converted timestamps:", { event_date, start_time, end_time });
-
       if (!clubId) {
-        Alert.alert("Error", "Unable to determine your club. Please try again.");
+        Alert.alert("No club assigned. Contact admin.");
         setCreatingEvent(false);
         return;
       }
 
-      const insertPayload = {
-        title: formData.title.trim(),
-        event_date,
-        start_time,
-        end_time,
-        location: formData.location.trim(),
-        description: (formData.description || "").trim(),
-        created_by: user.id,
-        club_id: clubId, // Use fetched club_id
-        status: "active",
-      };
-
-      console.log("📤 Insert payload:", insertPayload);
-
-      const { data, error } = await supabase
-        .from("events")
-        .insert(insertPayload);
-
-      if (error) {
-        console.error("❌ Database insert error:", {
-          code: error.code,
-          message: error.message,
-          details: error.details,
-        });
-        throw new Error(
-          `Database error: ${error.message}${error.details ? ` - ${error.details}` : ""}`
-        );
-      }
-
-      console.log("✅ Event created successfully");
+      await createEvent({
+        clubId,
+        title: formData.title,
+        description: formData.description,
+        location: formData.location,
+        eventDate: formData.event_date,
+        startTime: formData.start_time,
+        endTime: formData.end_time,
+      });
 
       Alert.alert("Success", "Event created successfully!");
       setShowCreateModal(false);
@@ -265,9 +216,9 @@ export default function PresidentEventManagementScreen() {
       setTimeout(() => {
         fetchPresidentEvents();
       }, 500);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("❌ Error creating event:", error);
-      const errorMsg = error?.message || error?.toString() || "Unknown error";
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
       Alert.alert("Error Creating Event", errorMsg);
     } finally {
       setCreatingEvent(false);
@@ -346,12 +297,18 @@ export default function PresidentEventManagementScreen() {
           My Events - QR Management
         </Text>
         <TouchableOpacity
-          style={styles.createButton}
+          style={[styles.createButton, { opacity: clubId ? 1 : 0.6 }]}
           onPress={() => setShowCreateModal(true)}
+          disabled={!clubId}
         >
           <Text style={styles.createButtonText}>+ Add Event</Text>
         </TouchableOpacity>
       </View>
+      {!clubId && (
+        <Text style={[styles.assignmentWarning, { color: isDark ? "#f5c542" : "#8a5a00" }]}>
+          No club assigned. Contact admin.
+        </Text>
+      )}
 
       {loading ? (
         <View style={styles.loadingContainer}>
@@ -484,6 +441,7 @@ export default function PresidentEventManagementScreen() {
         onClose={() => setShowCreateModal(false)}
         onSubmit={handleCreateEvent}
         loading={creatingEvent}
+        submitDisabled={!clubId}
       />
     </View>
   );
@@ -499,6 +457,10 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 16,
+  },
+  assignmentWarning: {
+    fontSize: 13,
+    marginBottom: 12,
   },
   heading: {
     fontSize: 22,
