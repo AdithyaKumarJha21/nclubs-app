@@ -16,6 +16,7 @@ interface EventCreationModalProps {
   onClose: () => void;
   onSubmit: (eventData: EventFormData) => void;
   loading: boolean;
+  submitDisabled?: boolean;
 }
 
 export interface EventFormData {
@@ -25,7 +26,6 @@ export interface EventFormData {
   end_time: string;
   location: string;
   description: string;
-  club_id: string;
 }
 
 export default function EventCreationModal({
@@ -33,6 +33,7 @@ export default function EventCreationModal({
   onClose,
   onSubmit,
   loading,
+  submitDisabled = false,
 }: EventCreationModalProps) {
   const { isDark } = useTheme();
   const [formData, setFormData] = useState<EventFormData>({
@@ -42,7 +43,6 @@ export default function EventCreationModal({
     end_time: "",
     location: "",
     description: "",
-    club_id: "",
   });
 
   const handleSubmit = () => {
@@ -109,7 +109,6 @@ export default function EventCreationModal({
       end_time: "",
       location: "",
       description: "",
-      club_id: "",
     });
     onClose();
   };
@@ -339,10 +338,10 @@ export default function EventCreationModal({
               style={[
                 styles.button,
                 styles.createButton,
-                { opacity: loading ? 0.6 : 1 },
+                { opacity: loading || submitDisabled ? 0.6 : 1 },
               ]}
               onPress={handleSubmit}
-              disabled={loading}
+              disabled={loading || submitDisabled}
             >
               <Text style={styles.buttonText}>
                 {loading ? "Creating..." : "Create Event"}
