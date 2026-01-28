@@ -12,7 +12,7 @@ import EventCreationModal, {
   EventFormData,
 } from "../components/EventCreationModal";
 import { useAuth } from "../context/AuthContext";
-import { getMyClubId } from "../services/assignments";
+import { getMyClubs } from "../services/assignments";
 import { createEvent } from "../services/events";
 import { supabase } from "../services/supabase";
 import { useTheme } from "../theme/ThemeContext";
@@ -48,6 +48,7 @@ export default function PresidentEventManagementScreen() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [deletingEventId, setDeletingEventId] = useState<string>("");
   const [clubId, setClubId] = useState<string | null>(null);
+  const [clubIds, setClubIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (user) {
@@ -63,11 +64,14 @@ export default function PresidentEventManagementScreen() {
   const fetchClubId = async () => {
     if (!user) return;
     try {
-      const resolvedClubId = await getMyClubId(user);
-      setClubId(resolvedClubId);
+      const resolvedClubIds = await getMyClubs(user);
+      console.log("FACULTY CLUB IDS:", resolvedClubIds);
+      setClubIds(resolvedClubIds);
+      setClubId(resolvedClubIds[0] ?? null);
     } catch (error) {
       console.error("❌ Error fetching club ID:", error);
       setClubId(null);
+      setClubIds([]);
     }
   };
 
@@ -193,14 +197,21 @@ export default function PresidentEventManagementScreen() {
 
       console.log("📝 Creating event with data:", formData);
 
-      if (!clubId) {
+      if (clubIds.length === 0) {
+        Alert.alert("No club assigned. Contact admin.");
+        setCreatingEvent(false);
+        return;
+      }
+
+      const resolvedClubId = clubId ?? clubIds[0] ?? null;
+      if (!resolvedClubId) {
         Alert.alert("No club assigned. Contact admin.");
         setCreatingEvent(false);
         return;
       }
 
       await createEvent({
-        clubId,
+        clubId: resolvedClubId,
         title: formData.title,
         description: formData.description,
         location: formData.location,
