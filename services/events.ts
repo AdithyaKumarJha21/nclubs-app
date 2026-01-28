@@ -101,7 +101,9 @@ export const createEvent = async (input: CreateEventInput): Promise<void> => {
     status: "active",
   };
 
-  const { error } = await supabase.from("events").insert(payload);
+  const { data, error } = await supabase.from("events").insert(payload).select("id");
+
+  console.log("📌 Event insert response", { data, error });
 
   if (error) {
     throw new Error(normalizeSupabaseError(error));
