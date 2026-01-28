@@ -52,21 +52,61 @@ const getRoleNameById = async (roleId: string): Promise<Role | null> => {
   return normalized;
 };
 
-export const getMyClubId = async (
-  user: UserWithRole | null
-): Promise<string | null> => {
-  if (!user) {
+type ProfileRoleRow = {
+  role_id: string | null;
+  roles: { name: string | null } | { name: string | null }[] | null;
+};
+
+const getRoleFromProfile = async (userId: string): Promise<Role | null> => {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("role_id, roles(name)")
+    .eq("id", userId)
+    .maybeSingle<ProfileRoleRow>();
+
+  if (error || !data) {
     return null;
   }
 
-  let resolvedRole: Role | null = user.role ?? null;
+  let roleName: string | null = null;
+
+  if (Array.isArray(data.roles)) {
+    roleName = data.roles[0]?.name ?? null;
+  } else {
+    roleName = data.roles?.name ?? null;
+  }
+
+  const normalized = roleName ? normalizeRole(roleName) : null;
+  if (normalized) {
+    return normalized;
+  }
+
+  if (data.role_id) {
+    return getRoleNameById(data.role_id);
+  }
+
+  return null;
+};
+
+export const getMyClubs = async (
+  user: UserWithRole | null
+): Promise<string[]> => {
+  if (!user) {
+    return [];
+  }
+
+  let resolvedRole: Role | null = await getRoleFromProfile(user.id);
+
+  if (!resolvedRole) {
+    resolvedRole = user.role ?? null;
+  }
 
   if (!resolvedRole && user.role_id) {
     resolvedRole = await getRoleNameById(user.role_id);
   }
 
   if (!resolvedRole || resolvedRole === "admin") {
-    return null;
+    return [];
   }
 
   if (resolvedRole === "president") {
@@ -76,26 +116,40 @@ export const getMyClubId = async (
       .eq("user_id", user.id)
       .maybeSingle<{ club_id: string | null }>();
 
+    console.log("🔎 President assignment lookup", { data, error });
+
     if (error || !data?.club_id) {
-      return null;
+      return [];
     }
 
-    return isValidUuid(data.club_id) ? data.club_id : null;
+    return isValidUuid(data.club_id) ? [data.club_id] : [];
   }
 
   if (resolvedRole === "faculty") {
     const { data, error } = await supabase
       .from("faculty_assignments")
       .select("club_id")
-      .eq("faculty_id", user.id)
-      .maybeSingle<{ club_id: string | null }>();
+      .eq("faculty_id", user.id);
 
-    if (error || !data?.club_id) {
-      return null;
+    console.log("🔎 Faculty assignment lookup", { data, error });
+
+    if (error || !data) {
+      return [];
     }
 
-    return isValidUuid(data.club_id) ? data.club_id : null;
+    const clubIds = data
+      .map((row) => row.club_id)
+      .filter((clubId): clubId is string => !!clubId && isValidUuid(clubId));
+
+    return clubIds;
   }
 
-  return null;
+  return [];
+};
+
+export const getMyPrimaryClubId = async (
+  user: UserWithRole | null
+): Promise<string | null> => {
+  const clubIds = await getMyClubs(user);
+  return clubIds[0] ?? null;
 };
