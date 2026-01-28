@@ -3,7 +3,7 @@ import { normalizeSupabaseError } from "./api/errors";
 import { getMyClubs, isValidUuid } from "./assignments";
 
 export type CreateEventInput = {
-  clubId: string;
+  clubId?: string;
   title: string;
   description?: string;
   location?: string;
@@ -51,10 +51,6 @@ const parseTime = (value: string): { hour: number; minute: number } | null => {
 };
 
 export const createEvent = async (input: CreateEventInput): Promise<void> => {
-  if (!isValidUuid(input.clubId)) {
-    throw new Error("No club assigned. Contact admin.");
-  }
-
   const title = input.title.trim();
   if (!title) {
     throw new Error("Title is required.");
@@ -89,8 +85,28 @@ export const createEvent = async (input: CreateEventInput): Promise<void> => {
     throw new Error("Not authorized.");
   }
 
+  console.log("🔐 Auth user lookup", { userId: user.id });
+
+  const clubIds = await getMyClubs(user);
+  console.log("🏷️ Faculty club assignments", { clubIds });
+
+  const candidateClubId =
+    input.clubId && isValidUuid(input.clubId) ? input.clubId : null;
+  const resolvedClubId =
+    clubIds.length > 0
+      ? clubIds.includes(candidateClubId ?? "")
+        ? candidateClubId
+        : clubIds[0]
+      : candidateClubId;
+
+  console.log("🎯 Selected clubId for insert", { resolvedClubId });
+
+  if (!resolvedClubId || !isValidUuid(resolvedClubId)) {
+    throw new Error("No club assigned. Contact admin.");
+  }
+
   const payload = {
-    club_id: input.clubId,
+    club_id: resolvedClubId,
     title,
     description: input.description?.trim() || null,
     location: input.location?.trim() || null,
@@ -100,6 +116,8 @@ export const createEvent = async (input: CreateEventInput): Promise<void> => {
     created_by: user.id,
     status: "active",
   };
+
+  console.log("🧾 Final event insert payload", payload);
 
   const { data, error } = await supabase.from("events").insert(payload).select("id");
 
