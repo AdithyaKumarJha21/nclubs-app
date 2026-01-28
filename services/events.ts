@@ -1,6 +1,6 @@
 import { supabase } from "./supabase";
 import { normalizeSupabaseError } from "./api/errors";
-import { isValidUuid } from "./assignments";
+import { getMyClubs, isValidUuid } from "./assignments";
 
 export type CreateEventInput = {
   clubId: string;
@@ -100,6 +100,87 @@ export const createEvent = async (input: CreateEventInput): Promise<void> => {
     created_by: user.id,
     status: "active",
   };
+
+  const { data, error } = await supabase.from("events").insert(payload).select("id");
+
+  console.log("📌 Event insert response", { data, error });
+
+  if (error) {
+    throw new Error(normalizeSupabaseError(error));
+  }
+};
+
+type InsertEventPayload = {
+  title: string;
+  description?: string;
+  location?: string;
+  eventDate: string;
+  startTime: string;
+  endTime: string;
+};
+
+export const insertEventWithDebug = async (
+  input: InsertEventPayload
+): Promise<void> => {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  console.log("🔐 Auth user lookup", { user, userError });
+
+  if (userError || !user) {
+    throw new Error("Not authorized.");
+  }
+
+  const clubIds = await getMyClubs(user);
+  console.log("🏷️ Faculty club assignments", { clubIds });
+
+  const selectedClubId = clubIds[0] ?? null;
+  console.log("🎯 Selected clubId for insert", { selectedClubId });
+
+  if (!selectedClubId || !isValidUuid(selectedClubId)) {
+    throw new Error("No club assigned. Contact admin.");
+  }
+
+  const title = input.title.trim();
+  if (!title) {
+    throw new Error("Title is required.");
+  }
+
+  const [year, month, day] = input.eventDate.split("-").map((part) => Number(part));
+  if (!isValidDateParts(year, month, day)) {
+    throw new Error("Invalid event date.");
+  }
+
+  const start = parseTime(input.startTime);
+  const end = parseTime(input.endTime);
+
+  if (!start || !end) {
+    throw new Error("Invalid time format.");
+  }
+
+  const eventDate = new Date(year, month - 1, day, 0, 0, 0);
+  const startDate = new Date(year, month - 1, day, start.hour, start.minute, 0);
+  const endDate = new Date(year, month - 1, day, end.hour, end.minute, 0);
+
+  if (endDate.getTime() <= startDate.getTime()) {
+    throw new Error("End time must be after start time.");
+  }
+
+  const payload = {
+    club_id: selectedClubId,
+    title,
+    description: input.description?.trim() || null,
+    location: input.location?.trim() || null,
+    event_date: eventDate.toISOString(),
+    start_time: startDate.toISOString(),
+    end_time: endDate.toISOString(),
+    created_by: user.id,
+    status: "active",
+  };
+
+  console.log("🧾 Final event insert payload", payload);
 
   const { data, error } = await supabase.from("events").insert(payload).select("id");
 
