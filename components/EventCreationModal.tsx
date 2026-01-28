@@ -17,6 +17,7 @@ interface EventCreationModalProps {
   onSubmit: (eventData: EventFormData) => void;
   loading: boolean;
   submitDisabled?: boolean;
+  submitDisabledMessage?: string;
 }
 
 export interface EventFormData {
@@ -34,6 +35,7 @@ export default function EventCreationModal({
   onSubmit,
   loading,
   submitDisabled = false,
+  submitDisabledMessage,
 }: EventCreationModalProps) {
   const { isDark } = useTheme();
   const [formData, setFormData] = useState<EventFormData>({
@@ -318,6 +320,19 @@ export default function EventCreationModal({
                 editable={!loading}
               />
             </View>
+
+            {submitDisabled && submitDisabledMessage ? (
+              <View style={styles.noticeContainer}>
+                <Text
+                  style={[
+                    styles.noticeText,
+                    { color: isDark ? "#f5b5b5" : "#b00020" },
+                  ]}
+                >
+                  {submitDisabledMessage}
+                </Text>
+              </View>
+            ) : null}
           </ScrollView>
 
           {/* Action Buttons */}
@@ -394,6 +409,16 @@ const styles = StyleSheet.create({
   textArea: {
     textAlignVertical: "top",
     paddingVertical: 12,
+  },
+  noticeContainer: {
+    marginTop: 4,
+    marginBottom: 8,
+    paddingVertical: 6,
+  },
+  noticeText: {
+    fontSize: 13,
+    fontWeight: "600",
+    textAlign: "center",
   },
   buttonContainer: {
     flexDirection: "row",

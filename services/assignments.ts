@@ -164,3 +164,24 @@ export const getMyPrimaryClubId = async (
   const clubIds = await getMyClubs(user);
   return clubIds[0] ?? null;
 };
+
+export const resolveFacultyClubId = async (
+  user: UserWithRole | null,
+  preferredClubId?: string | null
+): Promise<string> => {
+  const clubIds = await getMyClubs(user);
+  console.log("🏷️ Faculty club assignments", { clubIds });
+
+  if (clubIds.length === 0) {
+    throw new Error("No club assigned. Contact admin.");
+  }
+
+  const candidate =
+    preferredClubId && isValidUuid(preferredClubId) ? preferredClubId : null;
+
+  if (candidate && clubIds.includes(candidate)) {
+    return candidate;
+  }
+
+  return clubIds[0];
+};
