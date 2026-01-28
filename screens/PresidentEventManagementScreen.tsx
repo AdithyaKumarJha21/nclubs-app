@@ -49,6 +49,7 @@ export default function PresidentEventManagementScreen() {
   const [deletingEventId, setDeletingEventId] = useState<string>("");
   const [clubId, setClubId] = useState<string | null>(null);
   const [clubIds, setClubIds] = useState<string[]>([]);
+  const noClubAssigned = clubIds.length === 0;
 
   useEffect(() => {
     if (user) {
@@ -197,7 +198,7 @@ export default function PresidentEventManagementScreen() {
 
       console.log("📝 Creating event with data:", formData);
 
-      if (clubIds.length === 0) {
+      if (noClubAssigned) {
         Alert.alert("No club assigned. Contact admin.");
         setCreatingEvent(false);
         return;
@@ -452,7 +453,8 @@ export default function PresidentEventManagementScreen() {
         onClose={() => setShowCreateModal(false)}
         onSubmit={handleCreateEvent}
         loading={creatingEvent}
-        submitDisabled={!clubId}
+        submitDisabled={noClubAssigned}
+        submitDisabledMessage="No club assigned. Contact admin."
       />
     </View>
   );

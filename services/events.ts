@@ -1,6 +1,6 @@
 import { supabase } from "./supabase";
 import { normalizeSupabaseError } from "./api/errors";
-import { getMyClubs, isValidUuid } from "./assignments";
+import { resolveFacultyClubId } from "./assignments";
 
 export type CreateEventInput = {
   clubId?: string;
@@ -87,23 +87,8 @@ export const createEvent = async (input: CreateEventInput): Promise<void> => {
 
   console.log("🔐 Auth user lookup", { userId: user.id });
 
-  const clubIds = await getMyClubs(user);
-  console.log("🏷️ Faculty club assignments", { clubIds });
-
-  const candidateClubId =
-    input.clubId && isValidUuid(input.clubId) ? input.clubId : null;
-  const resolvedClubId =
-    clubIds.length > 0
-      ? clubIds.includes(candidateClubId ?? "")
-        ? candidateClubId
-        : clubIds[0]
-      : candidateClubId;
-
+  const resolvedClubId = await resolveFacultyClubId(user, input.clubId ?? null);
   console.log("🎯 Selected clubId for insert", { resolvedClubId });
-
-  if (!resolvedClubId || !isValidUuid(resolvedClubId)) {
-    throw new Error("No club assigned. Contact admin.");
-  }
 
   const payload = {
     club_id: resolvedClubId,
@@ -119,11 +104,19 @@ export const createEvent = async (input: CreateEventInput): Promise<void> => {
 
   console.log("🧾 Final event insert payload", payload);
 
-  const { data, error } = await supabase.from("events").insert(payload).select("id");
+  const { data, error } = await supabase
+    .from("events")
+    .insert([payload])
+    .select()
+    .single();
 
   console.log("📌 Event insert response", { data, error });
 
   if (error) {
+    if (error.code === "42501") {
+      console.error("🚫 Not authorized for event insert", { payload });
+      throw new Error("Not authorized. Please contact admin.");
+    }
     throw new Error(normalizeSupabaseError(error));
   }
 };
@@ -151,15 +144,8 @@ export const insertEventWithDebug = async (
     throw new Error("Not authorized.");
   }
 
-  const clubIds = await getMyClubs(user);
-  console.log("🏷️ Faculty club assignments", { clubIds });
-
-  const selectedClubId = clubIds[0] ?? null;
+  const selectedClubId = await resolveFacultyClubId(user, null);
   console.log("🎯 Selected clubId for insert", { selectedClubId });
-
-  if (!selectedClubId || !isValidUuid(selectedClubId)) {
-    throw new Error("No club assigned. Contact admin.");
-  }
 
   const title = input.title.trim();
   if (!title) {
@@ -200,11 +186,19 @@ export const insertEventWithDebug = async (
 
   console.log("🧾 Final event insert payload", payload);
 
-  const { data, error } = await supabase.from("events").insert(payload).select("id");
+  const { data, error } = await supabase
+    .from("events")
+    .insert([payload])
+    .select()
+    .single();
 
   console.log("📌 Event insert response", { data, error });
 
   if (error) {
+    if (error.code === "42501") {
+      console.error("🚫 Not authorized for event insert", { payload });
+      throw new Error("Not authorized. Please contact admin.");
+    }
     throw new Error(normalizeSupabaseError(error));
   }
 };
