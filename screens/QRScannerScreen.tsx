@@ -13,36 +13,8 @@ import { useAuth } from "../context/AuthContext";
 import { markAttendance } from "../services/attendance";
 import { EventDetail, getEventById } from "../services/events";
 import { useTheme } from "../theme/ThemeContext";
-import { getEventWindowStatus } from "../utils/timeWindow";
-
-const formatTime = (iso: string): string => {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) {
-    return iso;
-  }
-
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-};
-
-const parseQrPayload = (
-  payload: string
-): { eventId: string; token: string } | null => {
-  if (!payload) return null;
-
-  try {
-    const parsed = JSON.parse(payload) as { eventId?: string; token?: string };
-    if (parsed.eventId && parsed.token) {
-      return { eventId: parsed.eventId, token: parsed.token };
-    }
-  } catch (error) {
-    // ignore and fall back to string parsing
-  }
-
-  const [eventId, token] = payload.split(":");
-  if (!eventId || !token) return null;
-
-  return { eventId, token };
-};
+import { parseQrPayload } from "../utils/qr";
+import { formatTimeLocal, getEventWindowStatus } from "../utils/timeWindow";
 
 export default function QRScannerScreen() {
   const router = useRouter();
@@ -102,7 +74,10 @@ export default function QRScannerScreen() {
 
     const status = getEventWindowStatus(event.start_time, event.end_time);
     if (status === "before") {
-      return { enabled: false, message: `Scan opens at ${formatTime(event.start_time)}.` };
+      return {
+        enabled: false,
+        message: `Scan opens at ${formatTimeLocal(event.start_time)}.`,
+      };
     }
     if (status === "after") {
       return { enabled: false, message: "Event ended. Scan closed." };
@@ -117,12 +92,22 @@ export default function QRScannerScreen() {
   const handleScan = async (payload: string) => {
     if (!event || scanned) return;
 
+    console.log("📷 QR scan payload", {
+      eventId: resolvedEventId,
+      rawLength: payload.length,
+    });
+
     const parsed = parseQrPayload(payload);
     if (!parsed) {
       Alert.alert("Invalid QR", "QR code data is not recognized.");
       setScanned(false);
       return;
     }
+
+    console.log("🧩 Parsed QR payload", {
+      eventId: parsed.eventId,
+      tokenLength: parsed.token?.length ?? 0,
+    });
 
     if (parsed.eventId !== event.id) {
       Alert.alert("Invalid QR", "This QR code is for a different event.");
