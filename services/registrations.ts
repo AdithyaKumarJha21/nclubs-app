@@ -10,6 +10,39 @@ export type EventRegistration = {
   registered_at: string;
 };
 
+export const getPrefilledEmail = async (): Promise<string> => {
+  try {
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return "";
+    }
+
+    if (user.email) {
+      return user.email;
+    }
+
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (error) {
+      console.warn("⚠️ Unable to load profile email", { error });
+      return "";
+    }
+
+    return data?.email ?? "";
+  } catch (error) {
+    console.warn("⚠️ Unable to prefill email", { error });
+    return "";
+  }
+};
+
 export const getMyRegistration = async (
   eventId: string
 ): Promise<EventRegistration | null> => {
@@ -44,7 +77,7 @@ export const registerForEvent = async (
   eventId: string,
   email: string,
   usn: string
-): Promise<{ registration: EventRegistration | null; alreadyRegistered: boolean }> => {
+): Promise<{ status: "created" | "exists" }> => {
   const trimmedEmail = email.trim();
   const trimmedUsn = usn.trim();
 
@@ -75,12 +108,11 @@ export const registerForEvent = async (
 
   if (error) {
     if (error.code === "23505") {
-      const existing = await getMyRegistration(eventId);
-      return { registration: existing, alreadyRegistered: true };
+      return { status: "exists" };
     }
 
     throw new Error(normalizeSupabaseError(error));
   }
 
-  return { registration: data, alreadyRegistered: false };
+  return { status: data ? "created" : "exists" };
 };
