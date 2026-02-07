@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useRouter } from "expo-router";
 import EventCreationModal, {
   EventFormData,
 } from "../components/EventCreationModal";
@@ -26,24 +27,16 @@ interface Event {
   location: string;
   club_id: string;
   created_by: string;
-}
-
-interface QRStatus {
-  [eventId: string]: {
-    isActive: boolean;
-    generatedBy: string;
-    generatedAt: string;
-  };
+  qr_enabled: boolean;
 }
 
 export default function PresidentEventManagementScreen() {
+  const router = useRouter();
   const { user } = useAuth();
   const { isDark } = useTheme();
 
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
-  const [qrStatus, setQrStatus] = useState<QRStatus>({});
-  const [generatingQR, setGeneratingQR] = useState<string>("");
   const [creatingEvent, setCreatingEvent] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [deletingEventId, setDeletingEventId] = useState<string>("");
@@ -55,10 +48,6 @@ export default function PresidentEventManagementScreen() {
     if (user) {
       fetchClubId();
       fetchPresidentEvents();
-      fetchQRStatus();
-      // Poll for QR status
-      const interval = setInterval(fetchQRStatus, 5000);
-      return () => clearInterval(interval);
     }
   }, [user]);
 
@@ -83,7 +72,9 @@ export default function PresidentEventManagementScreen() {
       // Fetch only events created by this president
       const { data, error } = await supabase
         .from("events")
-        .select("id, title, event_date, start_time, end_time, location, club_id, created_by")
+        .select(
+          "id, title, event_date, start_time, end_time, location, club_id, created_by, qr_enabled"
+        )
         .eq("created_by", user.id)
         .order("event_date", { ascending: true });
 
@@ -94,99 +85,6 @@ export default function PresidentEventManagementScreen() {
       Alert.alert("Error", "Failed to load events");
     } finally {
       setLoading(false);
-    }
-  };
-
-  const fetchQRStatus = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("qr_sessions")
-        .select("event_id, status, generated_by");
-
-      if (error) throw error;
-
-      const statusMap: QRStatus = {};
-      (data || []).forEach((qr: any) => {
-        if (qr.status === "active") {
-          statusMap[qr.event_id] = {
-            isActive: true,
-            generatedBy: qr.generated_by,
-            generatedAt: new Date().toISOString(),
-          };
-        }
-      });
-      setQrStatus(statusMap);
-    } catch (error) {
-      console.error("Error fetching QR status:", error);
-    }
-  };
-
-  const handleGenerateQR = async (eventId: string) => {
-    if (!user) return;
-
-    try {
-      setGeneratingQR(eventId);
-
-      // Check if QR already exists
-      const { data: existing } = await supabase
-        .from("qr_sessions")
-        .select("id")
-        .eq("event_id", eventId)
-        .single();
-
-      if (existing) {
-        // Activate existing QR
-        const { error } = await supabase
-          .from("qr_sessions")
-          .update({ status: "active" })
-          .eq("event_id", eventId);
-
-        if (error) throw error;
-      } else {
-        // Create new QR session
-        const { error } = await supabase
-          .from("qr_sessions")
-          .insert({
-            event_id: eventId,
-            token: `QR-${Date.now()}-${Math.random()}`, // Generate unique token
-            status: "active",
-            generated_by: user.id,
-            created_at: new Date().toISOString(),
-          });
-
-        if (error) throw error;
-      }
-
-      Alert.alert("Success", "QR code generated and activated!");
-      await fetchQRStatus();
-    } catch (error: any) {
-      console.error("Error generating QR:", error);
-      const errorMsg = error?.message || "Failed to generate QR code";
-      Alert.alert("Error", errorMsg);
-    } finally {
-      setGeneratingQR("");
-    }
-  };
-
-  const handleDisableQR = async (eventId: string) => {
-    try {
-      setGeneratingQR(eventId);
-
-      const { error } = await supabase
-        .from("qr_sessions")
-        .update({ status: "inactive" })
-        .eq("event_id", eventId);
-
-      if (error) throw error;
-
-      Alert.alert("Success", "QR code disabled!");
-      await fetchQRStatus();
-    } catch (error: any) {
-      console.error("Error disabling QR:", error);
-      const errorMsg = error?.message || "Failed to disable QR code";
-      Alert.alert("Error", errorMsg);
-    } finally {
-      setGeneratingQR("");
     }
   };
 
@@ -261,8 +159,6 @@ export default function PresidentEventManagementScreen() {
       setDeletingEventId(eventId);
 
       // Delete associated QR sessions first
-      await supabase.from("qr_sessions").delete().eq("event_id", eventId);
-
       // Delete associated event registrations
       await supabase
         .from("event_registrations")
@@ -283,7 +179,6 @@ export default function PresidentEventManagementScreen() {
 
       Alert.alert("Success", "Event deleted successfully!");
       await fetchPresidentEvents();
-      await fetchQRStatus();
     } catch (error) {
       console.error("Error deleting event:", error);
       Alert.alert("Error", "Failed to delete event");
@@ -342,9 +237,6 @@ export default function PresidentEventManagementScreen() {
           data={events}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => {
-            const qr = qrStatus[item.id];
-            const isQRActive = qr?.isActive || false;
-
             return (
               <View
                 style={[
@@ -383,47 +275,26 @@ export default function PresidentEventManagementScreen() {
                     style={[
                       styles.qrBadge,
                       {
-                        backgroundColor: isQRActive ? "#4caf50" : "#999",
+                        backgroundColor: item.qr_enabled ? "#4caf50" : "#999",
                       },
                     ]}
                   >
                     <Text style={styles.qrBadgeText}>
-                      {isQRActive ? "✓ QR Active" : "QR Inactive"}
+                      {item.qr_enabled ? "✓ QR Active" : "QR Inactive"}
                     </Text>
                   </View>
                 </View>
 
                 {/* Action Buttons */}
                 <View style={styles.buttonContainer}>
-                  {!isQRActive ? (
-                    <TouchableOpacity
-                      style={[
-                        styles.button,
-                        styles.generateButton,
-                        { opacity: generatingQR === item.id ? 0.6 : 1 },
-                      ]}
-                      onPress={() => handleGenerateQR(item.id)}
-                      disabled={generatingQR === item.id}
-                    >
-                      <Text style={styles.buttonText}>
-                        {generatingQR === item.id ? "..." : "Generate"}
-                      </Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <TouchableOpacity
-                      style={[
-                        styles.button,
-                        styles.disableButton,
-                        { opacity: generatingQR === item.id ? 0.6 : 1 },
-                      ]}
-                      onPress={() => handleDisableQR(item.id)}
-                      disabled={generatingQR === item.id}
-                    >
-                      <Text style={styles.buttonText}>
-                        {generatingQR === item.id ? "..." : "Disable"}
-                      </Text>
-                    </TouchableOpacity>
-                  )}
+                  <TouchableOpacity
+                    style={[styles.button, styles.manageButton]}
+                    onPress={() =>
+                      router.push({ pathname: "/president/events/[id]", params: { id: item.id } })
+                    }
+                  >
+                    <Text style={styles.buttonText}>Manage QR</Text>
+                  </TouchableOpacity>
 
                   <TouchableOpacity
                     style={[
@@ -548,11 +419,8 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     alignItems: "center",
   },
-  generateButton: {
-    backgroundColor: "#4caf50",
-  },
-  disableButton: {
-    backgroundColor: "#f44336",
+  manageButton: {
+    backgroundColor: "#2563eb",
   },
   deleteButton: {
     backgroundColor: "#ff6b6b",
