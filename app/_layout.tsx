@@ -1,9 +1,7 @@
 import { Stack } from "expo-router";
-import { useEffect, useRef } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 import { ThemeProvider } from "../theme/ThemeContext";
-import { logStartupDiagnostics } from "../utils/NetworkDiagnostics";
 
 function AppStack() {
   const { loading } = useAuth();
@@ -34,16 +32,6 @@ function AppStack() {
 }
 
 export default function RootLayout() {
-  const didLogDiagnostics = useRef(false);
-
-  useEffect(() => {
-    if (didLogDiagnostics.current) {
-      return;
-    }
-    didLogDiagnostics.current = true;
-    void logStartupDiagnostics();
-  }, []);
-
   return (
     <AuthProvider>
       <ThemeProvider>
