@@ -150,7 +150,7 @@ export default function StudentHomeScreen() {
 
       <TouchableOpacity
         style={styles.button}
-        onPress={() => router.push("/events")}
+        onPress={() => router.push("/student/events")}
       >
         <Text style={styles.buttonText}>Events</Text>
       </TouchableOpacity>

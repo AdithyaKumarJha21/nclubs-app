@@ -1,28 +1,60 @@
+import { CameraView, useCameraPermissions } from "expo-camera";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { useAuth } from "../context/AuthContext";
-import { supabase } from "../services/supabase";
+import { markAttendance } from "../services/attendance";
+import { EventDetail, getEventById } from "../services/events";
 import { useTheme } from "../theme/ThemeContext";
-import { canAccessQRScreen } from "../utils/permissions";
+import { getEventWindowStatus } from "../utils/timeWindow";
+
+const formatTime = (iso: string): string => {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return iso;
+  }
+
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+};
+
+const parseQrPayload = (
+  payload: string
+): { eventId: string; token: string } | null => {
+  if (!payload) return null;
+
+  try {
+    const parsed = JSON.parse(payload) as { eventId?: string; token?: string };
+    if (parsed.eventId && parsed.token) {
+      return { eventId: parsed.eventId, token: parsed.token };
+    }
+  } catch (error) {
+    // ignore and fall back to string parsing
+  }
+
+  const [eventId, token] = payload.split(":");
+  if (!eventId || !token) return null;
+
+  return { eventId, token };
+};
 
 export default function QRScannerScreen() {
   const router = useRouter();
   const { user, loading } = useAuth();
-  const { eventId, mode } = useLocalSearchParams<{ eventId?: string; mode?: string }>();
+  const { eventId, id } = useLocalSearchParams<{ eventId?: string; id?: string }>();
+  const resolvedEventId = eventId ?? id ?? "";
   const { isDark } = useTheme();
 
-  const [recording, setRecording] = useState(false);
-  const [event, setEvent] = useState<any>(null);
+  const [permission, requestPermission] = useCameraPermissions();
+  const [event, setEvent] = useState<EventDetail | null>(null);
   const [eventLoading, setEventLoading] = useState(true);
-  const [canScanQR, setCanScanQR] = useState(false);
+  const [scanned, setScanned] = useState(false);
 
   useEffect(() => {
     if (loading) return;
@@ -32,113 +64,95 @@ export default function QRScannerScreen() {
       return;
     }
 
-    if (!canAccessQRScreen(user)) {
-      // 🚫 Unauthorized users go to their home
-      if (user.role === "student") {
-        router.replace("/student-home");
-      } else {
-        router.replace("/faculty-home");
-      }
+    if (user.role !== "student") {
+      router.replace(user.role === "president" ? "/president-home" : "/faculty-home");
     }
-  }, [user, loading]);
+  }, [user, loading, router]);
 
-  // Fetch event and check time
   useEffect(() => {
-    if (eventId && mode === "student") {
-      fetchEventAndCheckTime();
+    if (!resolvedEventId) return;
+
+    const loadEvent = async () => {
+      try {
+        const data = await getEventById(resolvedEventId);
+        setEvent(data);
+        console.log("📍 QR scan event loaded", {
+          eventId: resolvedEventId,
+          qrEnabled: data.qr_enabled,
+          startTime: data.start_time,
+          endTime: data.end_time,
+        });
+      } catch (error) {
+        console.error("Error fetching event:", error);
+        Alert.alert("Error", "Failed to load event details");
+      } finally {
+        setEventLoading(false);
+      }
+    };
+
+    loadEvent();
+  }, [resolvedEventId]);
+
+  const scanStatus = useMemo(() => {
+    if (!event) return { enabled: false, message: "" };
+
+    if (!event.qr_enabled) {
+      return { enabled: false, message: "QR not enabled yet." };
     }
-  }, [eventId, mode]);
 
-  const fetchEventAndCheckTime = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("events")
-        .select("id, title, start_time, end_time, event_date")
-        .eq("id", eventId)
-        .single();
-
-      if (error) throw error;
-      setEvent(data);
-
-      // Check if we're within event time
-      checkEventTime(data);
-    } catch (error) {
-      console.error("Error fetching event:", error);
-      Alert.alert("Error", "Failed to load event details");
-    } finally {
-      setEventLoading(false);
+    const status = getEventWindowStatus(event.start_time, event.end_time);
+    if (status === "before") {
+      return { enabled: false, message: `Scan opens at ${formatTime(event.start_time)}.` };
     }
-  };
-
-  const checkEventTime = (event: any) => {
-    const now = new Date();
-    const eventDate = new Date(event.event_date);
-    const [startHour, startMin] = event.start_time.split(":").map(Number);
-    const [endHour, endMin] = event.end_time.split(":").map(Number);
-
-    const eventStart = new Date(eventDate);
-    eventStart.setHours(startHour, startMin, 0);
-
-    const eventEnd = new Date(eventDate);
-    eventEnd.setHours(endHour, endMin, 0);
-
-    const isWithinTime = now >= eventStart && now <= eventEnd;
-    setCanScanQR(isWithinTime);
-
-    if (!isWithinTime) {
-      Alert.alert(
-        "Not Available",
-        `QR scanning is only available during event time:\n${event.start_time} - ${event.end_time}`
-      );
+    if (status === "after") {
+      return { enabled: false, message: "Event ended. Scan closed." };
     }
-  };
+    if (status === "invalid") {
+      return { enabled: false, message: "Scan window unavailable." };
+    }
 
-  const handleSimulatedScan = async () => {
-    if (!canScanQR) {
-      Alert.alert(
-        "Not Available",
-        `QR scanning is only available during event time:\n${event?.start_time} - ${event?.end_time}`
-      );
+    return { enabled: true, message: "" };
+  }, [event]);
+
+  const handleScan = async (payload: string) => {
+    if (!event || scanned) return;
+
+    const parsed = parseQrPayload(payload);
+    if (!parsed) {
+      Alert.alert("Invalid QR", "QR code data is not recognized.");
+      setScanned(false);
       return;
     }
 
-    if (!user || !eventId) return;
+    if (parsed.eventId !== event.id) {
+      Alert.alert("Invalid QR", "This QR code is for a different event.");
+      setScanned(false);
+      return;
+    }
 
+    if (!event.qr_token || parsed.token !== event.qr_token) {
+      Alert.alert("Invalid QR", "QR token mismatch.");
+      setScanned(false);
+      return;
+    }
+
+    setScanned(true);
     try {
-      setRecording(true);
+      const result = await markAttendance(event.id);
 
-      // Get QR session
-      const { data: qrSession, error: qrError } = await supabase
-        .from("qr_sessions")
-        .select("id, event_id, status")
-        .eq("event_id", eventId)
-        .eq("status", "active")
-        .single();
-
-      if (!qrSession) {
-        Alert.alert("Error", "QR code not found or expired");
+      if (result.status === "already") {
+        Alert.alert("Attendance already marked", "You have already checked in.");
+        setScanned(false);
         return;
       }
 
-      // Record attendance
-      const { error: attendanceError } = await supabase
-        .from("attendance")
-        .insert({
-          event_id: eventId,
-          student_id: user.id,
-          scanned_at: new Date().toISOString(),
-        });
-
-      if (attendanceError) {
-        // Check if already scanned
-        if (attendanceError.code === "23505") {
-          Alert.alert(
-            "Already Scanned",
-            "You have already marked attendance for this event"
-          );
-          return;
-        }
-        throw attendanceError;
+      if (result.status === "forbidden") {
+        Alert.alert(
+          "Scan not allowed",
+          "Scan not allowed right now (outside event time or QR disabled)."
+        );
+        setScanned(false);
+        return;
       }
 
       Alert.alert("✓ Success", "Attendance recorded successfully!");
@@ -146,16 +160,15 @@ export default function QRScannerScreen() {
     } catch (error) {
       console.error("Error recording attendance:", error);
       Alert.alert("Error", "Failed to record attendance");
-    } finally {
-      setRecording(false);
+      setScanned(false);
     }
   };
 
-  if (loading || !user || !canAccessQRScreen(user)) {
+  if (loading || !user) {
     return null;
   }
 
-  if (mode === "student" && eventLoading) {
+  if (eventLoading) {
     return (
       <View
         style={[
@@ -164,6 +177,50 @@ export default function QRScannerScreen() {
         ]}
       >
         <ActivityIndicator size="large" color="#0066cc" />
+      </View>
+    );
+  }
+
+  if (!event) {
+    return (
+      <View
+        style={[
+          styles.container,
+          { backgroundColor: isDark ? "#1a1a1a" : "#fff" },
+        ]}
+      >
+        <Text style={{ color: isDark ? "#aaa" : "#666" }}>Event not found.</Text>
+      </View>
+    );
+  }
+
+  if (!permission) {
+    return (
+      <View
+        style={[
+          styles.container,
+          { backgroundColor: isDark ? "#1a1a1a" : "#fff" },
+        ]}
+      >
+        <ActivityIndicator size="large" color="#0066cc" />
+      </View>
+    );
+  }
+
+  if (!permission.granted) {
+    return (
+      <View
+        style={[
+          styles.container,
+          { backgroundColor: isDark ? "#1a1a1a" : "#fff" },
+        ]}
+      >
+        <Text style={[styles.permissionText, { color: isDark ? "#fff" : "#000" }]}>
+          Camera access is required to scan QR codes.
+        </Text>
+        <TouchableOpacity style={styles.button} onPress={requestPermission}>
+          <Text style={styles.buttonText}>Grant Permission</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -183,80 +240,49 @@ export default function QRScannerScreen() {
         QR Scanner
       </Text>
 
-      {mode === "student" && event && (
-        <View style={styles.eventInfo}>
-          <Text style={[styles.eventTitle, { color: isDark ? "#fff" : "#000" }]}>
-            {event.title}
+      <View style={styles.eventInfo}>
+        <Text style={[styles.eventTitle, { color: isDark ? "#fff" : "#000" }]}>
+          {event.title}
+        </Text>
+        <Text style={[styles.timeInfo, { color: scanStatus.enabled ? "#4caf50" : "#f44336" }]}>
+          {scanStatus.enabled ? "✓ Scanning Active" : "✗ Not Available"}
+        </Text>
+        {!scanStatus.enabled && (
+          <Text style={[styles.timeWarning, { color: isDark ? "#aaa" : "#666" }]}>
+            {scanStatus.message}
           </Text>
-          <Text
+        )}
+      </View>
+
+      <View style={styles.scannerContainer}>
+        {scanStatus.enabled ? (
+          <CameraView
+            style={styles.camera}
+            onBarcodeScanned={({ data }) => handleScan(data)}
+            barcodeScannerSettings={{
+              barcodeTypes: ["qr"],
+            }}
+          />
+        ) : (
+          <View
             style={[
-              styles.timeInfo,
+              styles.disabledScanner,
               {
-                color: canScanQR ? "#4caf50" : "#f44336",
+                backgroundColor: isDark ? "#2a2a2a" : "#f9f9f9",
+                borderColor: isDark ? "#444" : "#9ca3af",
               },
             ]}
           >
-            {canScanQR ? "✓ Scanning Active" : "✗ Not Available Now"}
-          </Text>
-          {!canScanQR && (
-            <Text style={[styles.timeWarning, { color: isDark ? "#aaa" : "#666" }]}>
-              Available: {event.start_time} - {event.end_time}
+            <Text style={[styles.disabledText, { color: isDark ? "#aaa" : "#666" }]}>
+              QR scanning is disabled right now.
             </Text>
-          )}
-        </View>
-      )}
-
-      <View
-        style={[
-          styles.mockScanner,
-          {
-            borderColor: isDark ? "#444" : "#9ca3af",
-            backgroundColor: isDark ? "#2a2a2a" : "#f9f9f9",
-          },
-        ]}
-      >
-        <Text
-          style={[
-            styles.mockText,
-            { color: isDark ? "#aaa" : "#6b7280" },
-          ]}
-        >
-          📱 Point to QR code
-        </Text>
-        <Text
-          style={[
-            styles.mockText,
-            { color: isDark ? "#aaa" : "#6b7280", fontSize: 12, marginTop: 4 },
-          ]}
-        >
-          (Camera would appear here)
-        </Text>
+          </View>
+        )}
       </View>
 
-      <TouchableOpacity
-        style={[
-          styles.button,
-          {
-            backgroundColor: canScanQR ? "#16a34a" : "#ccc",
-            opacity: recording ? 0.6 : 1,
-          },
-        ]}
-        onPress={handleSimulatedScan}
-        disabled={recording || !canScanQR}
-      >
-        <Text style={styles.buttonText}>
-          {recording ? "Recording..." : "Simulate Scan"}
-        </Text>
-      </TouchableOpacity>
-
-      {!canScanQR && (
-        <Text
-          style={[
-            styles.warningText,
-            { color: isDark ? "#aaa" : "#666" },
-          ]}
-        >
-          QR scanning is only available during the event time window
+      {!scanStatus.enabled && (
+        <Text style={[styles.warningText, { color: isDark ? "#aaa" : "#666" }]}>
+          {scanStatus.message}
         </Text>
       )}
     </View>
@@ -285,6 +311,21 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginBottom: 20,
   },
+  permissionText: {
+    fontSize: 14,
+    textAlign: "center",
+    marginBottom: 16,
+  },
+  button: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    backgroundColor: "#0066cc",
+  },
+  buttonText: {
+    color: "#fff",
+    fontWeight: "600",
+  },
   eventInfo: {
     width: "100%",
     padding: 12,
@@ -307,33 +348,30 @@ const styles = StyleSheet.create({
   timeWarning: {
     fontSize: 12,
   },
-  mockScanner: {
+  scannerContainer: {
     width: "100%",
-    height: 250,
+    height: 280,
+    borderRadius: 12,
+    overflow: "hidden",
+    marginBottom: 16,
+  },
+  camera: {
+    flex: 1,
+  },
+  disabledScanner: {
+    flex: 1,
     borderWidth: 2,
     borderStyle: "dashed",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 20,
-    borderRadius: 8,
+    borderRadius: 12,
   },
-  mockText: {
-    fontSize: 16,
-    fontWeight: "500",
-  },
-  button: {
-    padding: 14,
-    borderRadius: 10,
-    width: "100%",
-    alignItems: "center",
-  },
-  buttonText: {
-    color: "white",
-    fontWeight: "600",
-    fontSize: 16,
+  disabledText: {
+    fontSize: 14,
+    textAlign: "center",
   },
   warningText: {
-    marginTop: 16,
+    marginTop: 4,
     fontSize: 12,
     textAlign: "center",
   },

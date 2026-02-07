@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
     Alert,
     Modal,
@@ -8,6 +8,7 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+import { registerForEvent } from "../services/registrations";
 import { supabase } from "../services/supabase";
 import { useTheme } from "../theme/ThemeContext";
 
@@ -15,7 +16,7 @@ interface EventRegistrationModalProps {
   visible: boolean;
   eventId: string;
   eventTitle: string;
-  userId: string;
+  initialEmail?: string | null;
   onClose: () => void;
   onSuccess: (email: string, usn: string) => void;
 }
@@ -24,7 +25,7 @@ export default function EventRegistrationModal({
   visible,
   eventId,
   eventTitle,
-  userId,
+  initialEmail,
   onClose,
   onSuccess,
 }: EventRegistrationModalProps) {
@@ -33,15 +34,34 @@ export default function EventRegistrationModal({
   const [usn, setUsn] = useState("");
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    if (!visible) return;
+
+    const loadEmail = async () => {
+      if (initialEmail && !email) {
+        setEmail(initialEmail);
+        return;
+      }
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (user?.email && !email) {
+        setEmail(user.email);
+      }
+    };
+
+    loadEmail();
+  }, [visible, initialEmail, email]);
+
   const handleRegister = async () => {
     if (!email.trim() || !usn.trim()) {
       Alert.alert("Validation Error", "Please fill in both email and USN");
       return;
     }
 
-    // Simple email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
+    if (!email.includes("@")) {
       Alert.alert("Validation Error", "Please enter a valid email");
       return;
     }
@@ -49,34 +69,15 @@ export default function EventRegistrationModal({
     try {
       setLoading(true);
 
-      // Check if already registered
-      const { data: existing, error: checkError } = await supabase
-        .from("event_registrations")
-        .select("id")
-        .eq("event_id", eventId)
-        .eq("user_id", userId)
-        .single();
+      const { alreadyRegistered } = await registerForEvent(eventId, email, usn);
 
-      if (existing) {
+      if (alreadyRegistered) {
         Alert.alert("Already Registered", "You are already registered for this event");
-        onClose();
-        return;
+      } else {
+        Alert.alert("Success", "Successfully registered for the event!");
       }
 
-      // Register for event
-      const { error: registerError } = await supabase
-        .from("event_registrations")
-        .insert({
-          event_id: eventId,
-          user_id: userId,
-          email: email.trim(),
-          usn: usn.trim(),
-        });
-
-      if (registerError) throw registerError;
-
-      Alert.alert("Success", "Successfully registered for the event!");
-      onSuccess(email, usn);
+      onSuccess(email.trim(), usn.trim());
       setEmail("");
       setUsn("");
       onClose();
