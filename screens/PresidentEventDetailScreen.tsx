@@ -13,18 +13,8 @@ import QRCode from "react-native-qrcode-svg";
 import { useAuth } from "../context/AuthContext";
 import { EventDetail, getEventById, toggleEventQr } from "../services/events";
 import { useTheme } from "../theme/ThemeContext";
-
-const buildQrPayload = (eventId: string, token: string): string =>
-  `${eventId}:${token}`;
-
-const formatTime = (iso: string): string => {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) {
-    return iso;
-  }
-
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-};
+import { formatTimeLocal } from "../utils/timeWindow";
+import { buildQrPayload } from "../utils/qr";
 
 export default function PresidentEventDetailScreen() {
   const router = useRouter();
@@ -133,7 +123,7 @@ export default function PresidentEventDetailScreen() {
         />
         <DetailRow
           label="Time"
-          value={`${formatTime(event.start_time)} - ${formatTime(event.end_time)}`}
+          value={`${formatTimeLocal(event.start_time)} - ${formatTimeLocal(event.end_time)}`}
           isDark={isDark}
         />
         <DetailRow

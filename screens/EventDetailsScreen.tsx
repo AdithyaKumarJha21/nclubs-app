@@ -14,16 +14,11 @@ import { useAuth } from "../context/AuthContext";
 import { EventDetail, getEventById } from "../services/events";
 import { EventRegistration, getMyRegistration } from "../services/registrations";
 import { useTheme } from "../theme/ThemeContext";
-import { getEventWindowStatus, isWithinEventWindow } from "../utils/timeWindow";
-
-const formatTime = (iso: string): string => {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) {
-    return iso;
-  }
-
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-};
+import {
+  formatTimeLocal,
+  getEventWindowStatus,
+  isWithinEventWindow,
+} from "../utils/timeWindow";
 
 export default function EventDetailsScreen() {
   const router = useRouter();
@@ -37,6 +32,15 @@ export default function EventDetailsScreen() {
   const [registration, setRegistration] = useState<EventRegistration | null>(null);
   const [showRegistrationModal, setShowRegistrationModal] = useState(false);
   const [hasPrompted, setHasPrompted] = useState(false);
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setNow(new Date());
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     if (!resolvedEventId) return;
@@ -60,6 +64,7 @@ export default function EventDetailsScreen() {
           qrEnabled: eventData.qr_enabled,
           startTime: eventData.start_time,
           endTime: eventData.end_time,
+          now: new Date().toISOString(),
           isRegistered: !!registrationData,
         });
 
@@ -96,11 +101,11 @@ export default function EventDetailsScreen() {
       } as const;
     }
 
-    const status = getEventWindowStatus(event.start_time, event.end_time);
+    const status = getEventWindowStatus(event.start_time, event.end_time, now);
     if (status === "before") {
       return {
         enabled: false,
-        message: `Scan opens at ${formatTime(event.start_time)}.`,
+        message: `Scan opens at ${formatTimeLocal(event.start_time)}.`,
       } as const;
     }
     if (status === "after") {
@@ -118,9 +123,9 @@ export default function EventDetailsScreen() {
 
     return {
       enabled: true,
-      message: "Scan QR for Attendance",
+      message: "Scan is open now.",
     } as const;
-  }, [event]);
+  }, [event, now]);
 
   const handleRegistrationSuccess = (email: string, usn: string) => {
     setRegistration((prev) =>
@@ -140,7 +145,7 @@ export default function EventDetailsScreen() {
   const handleScanQR = async () => {
     if (!event) return;
 
-    if (!event.qr_enabled || !isWithinEventWindow(event.start_time, event.end_time)) {
+    if (!event.qr_enabled || !isWithinEventWindow(event.start_time, event.end_time, now)) {
       Alert.alert("Scan unavailable", scanStatus?.message ?? "Scan not available yet.");
       return;
     }
@@ -213,7 +218,9 @@ export default function EventDetailsScreen() {
             />
             <DetailRow
               label="Time"
-              value={`${formatTime(event.start_time)} - ${formatTime(event.end_time)}`}
+              value={`${formatTimeLocal(event.start_time)} - ${formatTimeLocal(
+                event.end_time
+              )}`}
               isDark={isDark}
             />
             <DetailRow
@@ -247,25 +254,25 @@ export default function EventDetailsScreen() {
                 <Text style={styles.scanButtonText}>Scan QR for Attendance</Text>
               </TouchableOpacity>
 
-              {scanStatus?.enabled ? null : (
-                <Text
-                  style={[
-                    styles.scanHint,
-                    { color: isDark ? "#aaa" : "#666" },
-                  ]}
-                >
-                  {scanStatus?.message}
-                </Text>
-              )}
+              <Text
+                style={[styles.scanHint, { color: isDark ? "#aaa" : "#666" }]}
+              >
+                {scanStatus?.message}
+              </Text>
 
             </View>
           ) : (
-            <TouchableOpacity
-              style={styles.registerButton}
-              onPress={() => setShowRegistrationModal(true)}
-            >
-              <Text style={styles.registerButtonText}>Register for Event</Text>
-            </TouchableOpacity>
+            <View>
+              <Text style={[styles.scanHint, { color: isDark ? "#aaa" : "#666" }]}>
+                Please register to scan attendance.
+              </Text>
+              <TouchableOpacity
+                style={styles.registerButton}
+                onPress={() => setShowRegistrationModal(true)}
+              >
+                <Text style={styles.registerButtonText}>Register for Event</Text>
+              </TouchableOpacity>
+            </View>
           )}
         </View>
       </ScrollView>

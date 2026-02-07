@@ -18,11 +18,17 @@ export const markAttendance = async (eventId: string): Promise<AttendanceResult>
 
   console.log("📸 Marking attendance", { eventId, userId: user.id });
 
-  const { error } = await supabase.from("attendance").insert({
-    event_id: eventId,
-    student_id: user.id,
-    scanned_at: new Date().toISOString(),
-  });
+  const { data, error } = await supabase
+    .from("attendance")
+    .insert({
+      event_id: eventId,
+      student_id: user.id,
+      scanned_at: new Date().toISOString(),
+    })
+    .select("event_id, student_id")
+    .single();
+
+  console.log("🧾 Attendance insert result", { data, error });
 
   if (error) {
     if (error.code === "23505") {
