@@ -147,6 +147,47 @@ export const toggleEventQr = async (
   return data as EventDetail;
 };
 
+export const generateQrAtomic = async (eventId: string): Promise<EventDetail> => {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    throw new Error("Not authorized.");
+  }
+
+  const updates: {
+    qr_enabled: boolean;
+    qr_token: string;
+    qr_updated_at: string;
+  } = {
+    qr_enabled: true,
+    qr_token: generateQrToken(),
+    qr_updated_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await supabase
+    .from("events")
+    .update(updates)
+    .eq("id", eventId)
+    .is("qr_token", null)
+    .select(
+      "id, title, description, location, event_date, start_time, end_time, club_id, created_by, qr_enabled, qr_token, qr_updated_at, status"
+    )
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(normalizeSupabaseError(error));
+  }
+
+  if (!data) {
+    throw new Error("QR already generated. You cannot generate another QR.");
+  }
+
+  return data as EventDetail;
+};
+
 export const createEvent = async (input: CreateEventInput): Promise<void> => {
   const title = input.title.trim();
   if (!title) {

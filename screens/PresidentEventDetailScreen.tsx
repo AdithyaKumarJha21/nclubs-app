@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -11,10 +11,12 @@ import {
 } from "react-native";
 import QRCode from "react-native-qrcode-svg";
 import { useAuth } from "../context/AuthContext";
-import { EventDetail, getEventById, toggleEventQr } from "../services/events";
+import { getMyClubs } from "../services/assignments";
+import { EventDetail, generateQrAtomic, getEventById, toggleEventQr } from "../services/events";
 import { useTheme } from "../theme/ThemeContext";
 import { formatTimeLocal } from "../utils/timeWindow";
 import { buildQrPayload } from "../utils/qr";
+import { useQrGenerationNotifications } from "../hooks/useQrGenerationNotifications";
 
 export default function PresidentEventDetailScreen() {
   const router = useRouter();
@@ -25,32 +27,72 @@ export default function PresidentEventDetailScreen() {
   const [event, setEvent] = useState<EventDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
+  const [canManageQr, setCanManageQr] = useState(false);
 
-  const isOwner = !!event && !!user && event.created_by === user.id;
+  const isAdmin = user?.role === "admin";
+  const hasQrToken = !!event?.qr_token;
+
+  const loadEvent = useCallback(async () => {
+    if (!id) return;
+
+    try {
+      setLoading(true);
+      const data = await getEventById(id);
+      setEvent(data);
+      console.log("📌 President event detail", {
+        userId: user?.id,
+        eventId: id,
+        qrEnabled: data.qr_enabled,
+      });
+    } catch (error) {
+      console.error("Error fetching event:", error);
+      Alert.alert("Error", "Failed to load event details");
+    } finally {
+      setLoading(false);
+    }
+  }, [id, user?.id]);
 
   useEffect(() => {
     if (!id) return;
+    loadEvent();
+  }, [id, loadEvent]);
 
-    const loadEvent = async () => {
-      try {
-        setLoading(true);
-        const data = await getEventById(id);
-        setEvent(data);
-        console.log("📌 President event detail", {
-          userId: user?.id,
-          eventId: id,
-          qrEnabled: data.qr_enabled,
-        });
-      } catch (error) {
-        console.error("Error fetching event:", error);
-        Alert.alert("Error", "Failed to load event details");
-      } finally {
-        setLoading(false);
+  useEffect(() => {
+    let isMounted = true;
+
+    const resolvePermissions = async () => {
+      if (!event || !user) {
+        if (isMounted) {
+          setCanManageQr(false);
+        }
+        return;
+      }
+
+      if (user.role === "admin" || event.created_by === user.id) {
+        if (isMounted) {
+          setCanManageQr(true);
+        }
+        return;
+      }
+
+      const clubIds = await getMyClubs(user);
+      if (isMounted) {
+        setCanManageQr(!!event.club_id && clubIds.includes(event.club_id));
       }
     };
 
-    loadEvent();
-  }, [id, user?.id]);
+    resolvePermissions();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [event, user]);
+
+  useQrGenerationNotifications({
+    eventId: event?.id ?? id,
+    hasQrToken,
+    onQrGenerated: loadEvent,
+  });
 
   const qrValue = useMemo(() => {
     if (!event?.qr_token) return null;
@@ -62,12 +104,35 @@ export default function PresidentEventDetailScreen() {
 
     try {
       setUpdating(true);
-      const updated = await toggleEventQr(event.id, enabled);
-      setEvent(updated);
-      Alert.alert("Success", enabled ? "QR generated!" : "QR disabled.");
+      if (enabled) {
+        const updated = await generateQrAtomic(event.id);
+        setEvent(updated);
+        Alert.alert("Success", "QR generated!");
+      } else {
+        const updated = await toggleEventQr(event.id, false);
+        setEvent(updated);
+        Alert.alert("Success", "QR disabled.");
+      }
     } catch (error: unknown) {
       console.error("Error updating QR:", error);
       const message = error instanceof Error ? error.message : "Failed to update QR.";
+      Alert.alert("Error", message);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleRegenerateQr = async () => {
+    if (!event || !isAdmin) return;
+
+    try {
+      setUpdating(true);
+      const updated = await toggleEventQr(event.id, true);
+      setEvent(updated);
+      Alert.alert("Success", "QR regenerated!");
+    } catch (error: unknown) {
+      console.error("Error regenerating QR:", error);
+      const message = error instanceof Error ? error.message : "Failed to regenerate QR.";
       Alert.alert("Error", message);
     } finally {
       setUpdating(false);
@@ -144,14 +209,14 @@ export default function PresidentEventDetailScreen() {
         </View>
       ) : null}
 
-      {isOwner ? (
+      {canManageQr ? (
         <View style={styles.qrSection}>
           <Text style={[styles.sectionTitle, { color: isDark ? "#fff" : "#000" }]}>
             QR Attendance
           </Text>
 
           <View style={styles.qrControls}>
-            {!event.qr_enabled ? (
+            {!hasQrToken ? (
               <TouchableOpacity
                 style={[styles.actionButton, styles.generateButton]}
                 onPress={() => handleToggleQr(true)}
@@ -162,6 +227,11 @@ export default function PresidentEventDetailScreen() {
                 </Text>
               </TouchableOpacity>
             ) : (
+              <View style={styles.disabledNotice}>
+                <Text style={styles.disabledNoticeText}>QR already generated.</Text>
+              </View>
+            )}
+            {event.qr_enabled ? (
               <View style={styles.enabledActions}>
                 <TouchableOpacity
                   style={[styles.actionButton, styles.disableButton]}
@@ -172,17 +242,19 @@ export default function PresidentEventDetailScreen() {
                     {updating ? "Updating..." : "Disable QR"}
                   </Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.actionButton, styles.regenerateButton]}
-                  onPress={() => handleToggleQr(true)}
-                  disabled={updating}
-                >
-                  <Text style={styles.actionButtonText}>
-                    {updating ? "Updating..." : "Regenerate"}
-                  </Text>
-                </TouchableOpacity>
+                {isAdmin ? (
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.regenerateButton]}
+                    onPress={handleRegenerateQr}
+                    disabled={updating}
+                  >
+                    <Text style={styles.actionButtonText}>
+                      {updating ? "Updating..." : "Regenerate"}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
               </View>
-            )}
+            ) : null}
           </View>
 
           {event.qr_enabled && qrValue ? (
@@ -205,7 +277,7 @@ export default function PresidentEventDetailScreen() {
         </View>
       ) : (
         <Text style={[styles.qrCaption, { color: isDark ? "#aaa" : "#666" }]}>
-          Only the event creator can manage QR settings.
+          Only authorized staff can manage QR settings.
         </Text>
       )}
     </ScrollView>
@@ -285,6 +357,19 @@ const styles = StyleSheet.create({
   },
   qrControls: {
     marginBottom: 16,
+  },
+  disabledNotice: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: "#e2e8f0",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  disabledNoticeText: {
+    color: "#475569",
+    fontWeight: "600",
+    fontSize: 12,
   },
   enabledActions: {
     flexDirection: "row",
