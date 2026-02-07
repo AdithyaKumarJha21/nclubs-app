@@ -12,7 +12,11 @@ import {
 import EventRegistrationModal from "../components/EventRegistrationModal";
 import { useAuth } from "../context/AuthContext";
 import { EventDetail, getEventById } from "../services/events";
-import { EventRegistration, getMyRegistration } from "../services/registrations";
+import {
+  EventRegistration,
+  getMyRegistration,
+  getPrefilledEmail,
+} from "../services/registrations";
 import { useTheme } from "../theme/ThemeContext";
 import { getEventWindowStatus, isWithinEventWindow } from "../utils/timeWindow";
 
@@ -37,6 +41,7 @@ export default function EventDetailsScreen() {
   const [registration, setRegistration] = useState<EventRegistration | null>(null);
   const [showRegistrationModal, setShowRegistrationModal] = useState(false);
   const [hasPrompted, setHasPrompted] = useState(false);
+  const [initialEmail, setInitialEmail] = useState("");
 
   useEffect(() => {
     if (!resolvedEventId) return;
@@ -84,6 +89,24 @@ export default function EventDetailsScreen() {
     };
   }, [resolvedEventId, user?.id, hasPrompted]);
 
+  useEffect(() => {
+    if (!showRegistrationModal) return;
+    let isMounted = true;
+
+    const loadEmail = async () => {
+      const prefilled = await getPrefilledEmail();
+      if (isMounted) {
+        setInitialEmail(prefilled);
+      }
+    };
+
+    loadEmail();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [showRegistrationModal]);
+
   const isRegistered = !!registration;
 
   const scanStatus = useMemo(() => {
@@ -122,19 +145,17 @@ export default function EventDetailsScreen() {
     } as const;
   }, [event]);
 
-  const handleRegistrationSuccess = (email: string, usn: string) => {
-    setRegistration((prev) =>
-      prev ??
-      ({
-        id: "",
-        event_id: resolvedEventId,
-        user_id: user?.id ?? "",
-        email,
-        usn,
-        registered_at: new Date().toISOString(),
-      } as EventRegistration)
-    );
-    setShowRegistrationModal(false);
+  const handleRegistrationSuccess = async () => {
+    try {
+      const registrationData = await getMyRegistration(resolvedEventId);
+      if (registrationData) {
+        setRegistration(registrationData);
+      }
+    } catch (error) {
+      console.error("Error refreshing registration:", error);
+    } finally {
+      setShowRegistrationModal(false);
+    }
   };
 
   const handleScanQR = async () => {
@@ -274,6 +295,7 @@ export default function EventDetailsScreen() {
         visible={showRegistrationModal}
         eventId={resolvedEventId}
         eventTitle={event.title}
+        initialEmail={initialEmail}
         onClose={() => setShowRegistrationModal(false)}
         onSuccess={handleRegistrationSuccess}
       />

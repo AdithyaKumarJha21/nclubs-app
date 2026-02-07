@@ -9,7 +9,6 @@ import {
     View,
 } from "react-native";
 import { registerForEvent } from "../services/registrations";
-import { supabase } from "../services/supabase";
 import { useTheme } from "../theme/ThemeContext";
 
 interface EventRegistrationModalProps {
@@ -18,7 +17,7 @@ interface EventRegistrationModalProps {
   eventTitle: string;
   initialEmail?: string | null;
   onClose: () => void;
-  onSuccess: (email: string, usn: string) => void;
+  onSuccess: () => void;
 }
 
 export default function EventRegistrationModal({
@@ -33,51 +32,43 @@ export default function EventRegistrationModal({
   const [email, setEmail] = useState("");
   const [usn, setUsn] = useState("");
   const [loading, setLoading] = useState(false);
+  const [emailError, setEmailError] = useState("");
+  const [usnError, setUsnError] = useState("");
 
   useEffect(() => {
     if (!visible) return;
 
-    const loadEmail = async () => {
-      if (initialEmail && !email) {
-        setEmail(initialEmail);
-        return;
-      }
-
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (user?.email && !email) {
-        setEmail(user.email);
-      }
-    };
-
-    loadEmail();
+    if (initialEmail && !email) {
+      setEmail(initialEmail);
+    }
   }, [visible, initialEmail, email]);
 
   const handleRegister = async () => {
-    if (!email.trim() || !usn.trim()) {
-      Alert.alert("Validation Error", "Please fill in both email and USN");
-      return;
-    }
+    const trimmedEmail = email.trim();
+    const trimmedUsn = usn.trim();
+    const nextEmailError =
+      !trimmedEmail || !trimmedEmail.includes("@") ? "Enter a valid email." : "";
+    const nextUsnError = !trimmedUsn ? "USN is required." : "";
 
-    if (!email.includes("@")) {
-      Alert.alert("Validation Error", "Please enter a valid email");
+    setEmailError(nextEmailError);
+    setUsnError(nextUsnError);
+
+    if (nextEmailError || nextUsnError) {
       return;
     }
 
     try {
       setLoading(true);
 
-      const { alreadyRegistered } = await registerForEvent(eventId, email, usn);
+      const { status } = await registerForEvent(eventId, trimmedEmail, trimmedUsn);
 
-      if (alreadyRegistered) {
-        Alert.alert("Already Registered", "You are already registered for this event");
+      if (status === "exists") {
+        Alert.alert("Already Registered", "You are already registered.");
       } else {
-        Alert.alert("Success", "Successfully registered for the event!");
+        Alert.alert("Success", "Registered successfully!");
       }
 
-      onSuccess(email.trim(), usn.trim());
+      onSuccess();
       setEmail("");
       setUsn("");
       onClose();
@@ -134,7 +125,12 @@ export default function EventRegistrationModal({
               placeholder="you@nmit.ac.in"
               placeholderTextColor={isDark ? "#666" : "#ccc"}
               value={email}
-              onChangeText={setEmail}
+              onChangeText={(value) => {
+                setEmail(value);
+                if (emailError) {
+                  setEmailError("");
+                }
+              }}
               keyboardType="email-address"
               editable={!loading}
               style={[
@@ -146,6 +142,9 @@ export default function EventRegistrationModal({
                 },
               ]}
             />
+            {emailError ? (
+              <Text style={styles.errorText}>{emailError}</Text>
+            ) : null}
           </View>
 
           {/* USN Input */}
@@ -157,7 +156,12 @@ export default function EventRegistrationModal({
               placeholder="1NMxx..."
               placeholderTextColor={isDark ? "#666" : "#ccc"}
               value={usn}
-              onChangeText={setUsn}
+              onChangeText={(value) => {
+                setUsn(value);
+                if (usnError) {
+                  setUsnError("");
+                }
+              }}
               editable={!loading}
               style={[
                 styles.input,
@@ -168,6 +172,9 @@ export default function EventRegistrationModal({
                 },
               ]}
             />
+            {usnError ? (
+              <Text style={styles.errorText}>{usnError}</Text>
+            ) : null}
           </View>
 
           {/* Buttons */}
@@ -235,6 +242,11 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 12,
     fontSize: 14,
+  },
+  errorText: {
+    color: "#d32f2f",
+    fontSize: 12,
+    marginTop: 6,
   },
   buttonContainer: {
     flexDirection: "row",
