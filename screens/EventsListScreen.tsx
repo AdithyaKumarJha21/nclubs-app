@@ -8,23 +8,22 @@ import {
     Text,
     View,
 } from "react-native";
-import { supabase } from "../services/supabase";
+import { EventListItem, getEventsForStudent } from "../services/events";
 import { useTheme } from "../theme/ThemeContext";
 
-type EventItem = {
-  id: string;
-  title: string;
-  event_date: string;
-  location: string;
-  start_time: string;
-  end_time: string;
-  description?: string;
+const formatTime = (iso: string): string => {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return iso;
+  }
+
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 };
 
 export default function EventsListScreen() {
   const router = useRouter();
   const { isDark } = useTheme();
-  const [events, setEvents] = useState<EventItem[]>([]);
+  const [events, setEvents] = useState<EventListItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -35,22 +34,11 @@ export default function EventsListScreen() {
     try {
       setLoading(true);
 
-      // ✅ FETCH ALL EVENTS FROM DATABASE
-      const { data, error } = await supabase
-        .from("events")
-        .select("id, title, event_date, location, start_time, end_time, description")
-        .order("event_date", { ascending: true });
-
-      if (error) {
-        console.error("Error fetching events:", error);
-        setEvents([]);
-        setLoading(false);
-        return;
-      }
+      const data = await getEventsForStudent();
 
       // ✅ FILTER OUT EXPIRED EVENTS (EVENT DATE IN THE FUTURE)
       const now = new Date();
-      const upcomingEvents = (data || []).filter((event: any) => {
+      const upcomingEvents = data.filter((event) => {
         const eventDate = new Date(event.event_date);
         return eventDate >= now; // Only show future events
       });
@@ -117,8 +105,8 @@ export default function EventsListScreen() {
               ]}
               onPress={() =>
                 router.push({
-                  pathname: "/event-details",
-                  params: { eventId: item.id },
+                  pathname: "/student/events/[id]",
+                  params: { id: item.id },
                 })
               }
             >
@@ -137,7 +125,7 @@ export default function EventsListScreen() {
                 ]}
               >
                 📅 {new Date(item.event_date).toLocaleDateString()} at{" "}
-                {item.start_time}
+                {formatTime(item.start_time)}
               </Text>
               <Text
                 style={[

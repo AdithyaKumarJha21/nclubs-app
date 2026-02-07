@@ -12,6 +12,25 @@ export type CreateEventInput = {
   endTime: string;
 };
 
+export type EventListItem = {
+  id: string;
+  title: string;
+  event_date: string;
+  location: string | null;
+  start_time: string;
+  end_time: string;
+  description: string | null;
+  qr_enabled: boolean;
+};
+
+export type EventDetail = EventListItem & {
+  club_id: string | null;
+  created_by: string;
+  qr_token: string | null;
+  qr_updated_at: string | null;
+  status: string;
+};
+
 const isValidDateParts = (year: number, month: number, day: number): boolean => {
   if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
     return false;
@@ -48,6 +67,84 @@ const parseTime = (value: string): { hour: number; minute: number } | null => {
   }
 
   return { hour, minute };
+};
+
+const generateQrToken = (): string => {
+  const segments = Array.from({ length: 5 }, () => Math.random().toString(36).slice(2));
+  return segments.join("");
+};
+
+export const getEventsForStudent = async (): Promise<EventListItem[]> => {
+  const { data, error } = await supabase
+    .from("events")
+    .select("id, title, event_date, location, start_time, end_time, description, qr_enabled")
+    .order("event_date", { ascending: true });
+
+  if (error) {
+    throw new Error(normalizeSupabaseError(error));
+  }
+
+  return (data ?? []) as EventListItem[];
+};
+
+export const getEventById = async (id: string): Promise<EventDetail> => {
+  const { data, error } = await supabase
+    .from("events")
+    .select(
+      "id, title, description, location, event_date, start_time, end_time, club_id, created_by, qr_enabled, qr_token, qr_updated_at, status"
+    )
+    .eq("id", id)
+    .single();
+
+  if (error) {
+    throw new Error(normalizeSupabaseError(error));
+  }
+
+  return data as EventDetail;
+};
+
+export const toggleEventQr = async (
+  eventId: string,
+  enabled: boolean
+): Promise<EventDetail> => {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    throw new Error("Not authorized.");
+  }
+
+  console.log("🔁 Toggling QR", { eventId, enabled, userId: user.id });
+
+  const updates: {
+    qr_enabled: boolean;
+    qr_token?: string;
+    qr_updated_at: string;
+  } = {
+    qr_enabled: enabled,
+    qr_updated_at: new Date().toISOString(),
+  };
+
+  if (enabled) {
+    updates.qr_token = generateQrToken();
+  }
+
+  const { data, error } = await supabase
+    .from("events")
+    .update(updates)
+    .eq("id", eventId)
+    .select(
+      "id, title, description, location, event_date, start_time, end_time, club_id, created_by, qr_enabled, qr_token, qr_updated_at, status"
+    )
+    .single();
+
+  if (error) {
+    throw new Error(normalizeSupabaseError(error));
+  }
+
+  return data as EventDetail;
 };
 
 export const createEvent = async (input: CreateEventInput): Promise<void> => {

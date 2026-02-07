@@ -1,155 +1,158 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import EventRegistrationModal from "../components/EventRegistrationModal";
 import { useAuth } from "../context/AuthContext";
-import { supabase } from "../services/supabase";
+import { EventDetail, getEventById } from "../services/events";
+import { EventRegistration, getMyRegistration } from "../services/registrations";
 import { useTheme } from "../theme/ThemeContext";
+import { getEventWindowStatus, isWithinEventWindow } from "../utils/timeWindow";
 
-interface Event {
-  id: string;
-  title: string;
-  description: string;
-  event_date: string;
-  start_time: string;
-  end_time: string;
-  location: string;
-  club_id: string;
-  created_by: string;
-}
+const formatTime = (iso: string): string => {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return iso;
+  }
+
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+};
 
 export default function EventDetailsScreen() {
   const router = useRouter();
-  const { eventId } = useLocalSearchParams<{ eventId?: string }>();
+  const { eventId, id } = useLocalSearchParams<{ eventId?: string; id?: string }>();
+  const resolvedEventId = eventId ?? id ?? "";
   const { user } = useAuth();
   const { isDark } = useTheme();
 
-  const [event, setEvent] = useState<Event | null>(null);
+  const [event, setEvent] = useState<EventDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isRegistered, setIsRegistered] = useState(false);
-  const [canScanQR, setCanScanQR] = useState(false);
-  const [qrActive, setQrActive] = useState(false);
+  const [registration, setRegistration] = useState<EventRegistration | null>(null);
   const [showRegistrationModal, setShowRegistrationModal] = useState(false);
+  const [hasPrompted, setHasPrompted] = useState(false);
 
   useEffect(() => {
-    if (eventId && user) {
-      fetchEventDetails();
-      checkRegistration();
-      checkQRStatus();
-      // Poll for QR status every 5 seconds
-      const interval = setInterval(checkQRStatus, 5000);
-      return () => clearInterval(interval);
-    }
-  }, [eventId, user]);
+    if (!resolvedEventId) return;
+    let isMounted = true;
 
-  // Check time-based QR access
-  useEffect(() => {
-    if (!event) return;
-    
-    const checkTime = () => {
-      const now = new Date();
-      const eventDate = new Date(event.event_date);
-      const [startHour, startMin] = event.start_time.split(":").map(Number);
-      const [endHour, endMin] = event.end_time.split(":").map(Number);
+    const loadDetails = async () => {
+      try {
+        setLoading(true);
+        const [eventData, registrationData] = await Promise.all([
+          getEventById(resolvedEventId),
+          getMyRegistration(resolvedEventId),
+        ]);
 
-      const eventStart = new Date(eventDate);
-      eventStart.setHours(startHour, startMin, 0);
+        if (!isMounted) return;
+        setEvent(eventData);
+        setRegistration(registrationData);
 
-      const eventEnd = new Date(eventDate);
-      eventEnd.setHours(endHour, endMin, 0);
+        console.log("📍 Event detail loaded", {
+          userId: user?.id,
+          eventId: resolvedEventId,
+          qrEnabled: eventData.qr_enabled,
+          startTime: eventData.start_time,
+          endTime: eventData.end_time,
+          isRegistered: !!registrationData,
+        });
 
-      setCanScanQR(now >= eventStart && now <= eventEnd);
+        if (!registrationData && !hasPrompted) {
+          setShowRegistrationModal(true);
+          setHasPrompted(true);
+        }
+      } catch (error) {
+        console.error("Error fetching event:", error);
+        Alert.alert("Error", "Failed to load event details");
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
     };
 
-    checkTime();
-    const interval = setInterval(checkTime, 60000); // Check every minute
-    return () => clearInterval(interval);
+    loadDetails();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [resolvedEventId, user?.id, hasPrompted]);
+
+  const isRegistered = !!registration;
+
+  const scanStatus = useMemo(() => {
+    if (!event) return null;
+
+    if (!event.qr_enabled) {
+      return {
+        enabled: false,
+        message: "QR not enabled yet.",
+      } as const;
+    }
+
+    const status = getEventWindowStatus(event.start_time, event.end_time);
+    if (status === "before") {
+      return {
+        enabled: false,
+        message: `Scan opens at ${formatTime(event.start_time)}.`,
+      } as const;
+    }
+    if (status === "after") {
+      return {
+        enabled: false,
+        message: "Event ended. Scan closed.",
+      } as const;
+    }
+    if (status === "invalid") {
+      return {
+        enabled: false,
+        message: "Scan window unavailable.",
+      } as const;
+    }
+
+    return {
+      enabled: true,
+      message: "Scan QR for Attendance",
+    } as const;
   }, [event]);
 
-  const fetchEventDetails = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("events")
-        .select("*")
-        .eq("id", eventId)
-        .single();
-
-      if (error) throw error;
-      setEvent(data);
-    } catch (error) {
-      console.error("Error fetching event:", error);
-      Alert.alert("Error", "Failed to load event details");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const checkRegistration = async () => {
-    if (!user) return;
-    try {
-      const { data } = await supabase
-        .from("event_registrations")
-        .select("id")
-        .eq("event_id", eventId)
-        .eq("user_id", user.id)
-        .single();
-
-      setIsRegistered(!!data);
-    } catch (error) {
-      setIsRegistered(false);
-    }
-  };
-
-  const checkQRStatus = async () => {
-    try {
-      const { data } = await supabase
-        .from("qr_sessions")
-        .select("status")
-        .eq("event_id", eventId)
-        .eq("status", "active")
-        .single();
-
-      setQrActive(!!data);
-    } catch (error) {
-      setQrActive(false);
-    }
-  };
-
-  const handleRegistrationSuccess = async (email: string, usn: string) => {
-    setIsRegistered(true);
+  const handleRegistrationSuccess = (email: string, usn: string) => {
+    setRegistration((prev) =>
+      prev ??
+      ({
+        id: "",
+        event_id: resolvedEventId,
+        user_id: user?.id ?? "",
+        email,
+        usn,
+        registered_at: new Date().toISOString(),
+      } as EventRegistration)
+    );
     setShowRegistrationModal(false);
-    // Refresh registration status
-    await checkRegistration();
   };
 
-  const handleScanQR = () => {
-    if (!canScanQR) {
-      Alert.alert(
-        "Not Available",
-        `QR scanning is only available during event time:\n${event?.start_time} - ${event?.end_time}`
-      );
+  const handleScanQR = async () => {
+    if (!event) return;
+
+    if (!event.qr_enabled || !isWithinEventWindow(event.start_time, event.end_time)) {
+      Alert.alert("Scan unavailable", scanStatus?.message ?? "Scan not available yet.");
       return;
     }
 
-    if (!qrActive) {
-      Alert.alert(
-        "QR Not Generated",
-        "The event organizer hasn't generated the QR code yet"
-      );
+    if (!isRegistered) {
+      Alert.alert("Registration required", "Please register before scanning.");
       return;
     }
 
     router.push({
       pathname: "/qr-scanner",
-      params: { eventId, mode: "student" },
+      params: { eventId: resolvedEventId, mode: "student" },
     });
   };
 
@@ -187,53 +190,21 @@ export default function EventDetailsScreen() {
           { backgroundColor: isDark ? "#1a1a1a" : "#fff" },
         ]}
       >
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.backButton}
-        >
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <Text style={styles.backButtonText}>← Back</Text>
         </TouchableOpacity>
 
         <View style={styles.content}>
-          {/* Event Title */}
           <Text style={[styles.title, { color: isDark ? "#fff" : "#000" }]}>
             {event.title}
           </Text>
 
-          {/* Registration Status */}
           {isRegistered && (
-            <View
-              style={[styles.badge, { backgroundColor: "#4caf50" }]}
-            >
+            <View style={[styles.badge, { backgroundColor: "#4caf50" }]}>
               <Text style={styles.badgeText}>✓ Registered</Text>
             </View>
           )}
 
-          {/* QR Status */}
-          {isRegistered && (
-            <View
-              style={[
-                styles.qrStatusBadge,
-                {
-                  backgroundColor: qrActive
-                    ? canScanQR
-                      ? "#2196f3"
-                      : "#ff9800"
-                    : "#ccc",
-                },
-              ]}
-            >
-              <Text style={styles.qrStatusText}>
-                {!qrActive
-                  ? "QR Not Generated"
-                  : !canScanQR
-                    ? "QR Available Later"
-                    : "✓ QR Ready"}
-              </Text>
-            </View>
-          )}
-
-          {/* Event Details */}
           <View style={styles.detailsSection}>
             <DetailRow
               label="Date"
@@ -242,7 +213,7 @@ export default function EventDetailsScreen() {
             />
             <DetailRow
               label="Time"
-              value={`${event.start_time} - ${event.end_time}`}
+              value={`${formatTime(event.start_time)} - ${formatTime(event.end_time)}`}
               isDark={isDark}
             />
             <DetailRow
@@ -252,49 +223,42 @@ export default function EventDetailsScreen() {
             />
           </View>
 
-          {/* Description */}
-          {event.description && (
+          {event.description ? (
             <View style={styles.descriptionSection}>
-              <Text
-                style={[
-                  styles.sectionTitle,
-                  { color: isDark ? "#fff" : "#000" },
-                ]}
-              >
+              <Text style={[styles.sectionTitle, { color: isDark ? "#fff" : "#000" }]}>
                 Description
               </Text>
-              <Text
-                style={[
-                  styles.description,
-                  { color: isDark ? "#aaa" : "#666" },
-                ]}
-              >
+              <Text style={[styles.description, { color: isDark ? "#aaa" : "#666" }]}>
                 {event.description}
               </Text>
             </View>
-          )}
+          ) : null}
 
-          {/* Action Buttons */}
           {isRegistered ? (
-            <TouchableOpacity
-              style={[
-                styles.scanButton,
-                {
-                  backgroundColor:
-                    canScanQR && qrActive ? "#0066cc" : "#999",
-                },
-              ]}
-              onPress={handleScanQR}
-              disabled={!canScanQR || !qrActive}
-            >
-              <Text style={styles.scanButtonText}>
-                {!qrActive
-                  ? "QR Not Generated Yet"
-                  : !canScanQR
-                    ? `Available at ${event.start_time}`
-                    : "📱 Scan QR for Attendance"}
-              </Text>
-            </TouchableOpacity>
+            <View style={styles.scanSection}>
+              <TouchableOpacity
+                style={[
+                  styles.scanButton,
+                  { backgroundColor: scanStatus?.enabled ? "#0066cc" : "#999" },
+                ]}
+                onPress={handleScanQR}
+                disabled={!scanStatus?.enabled}
+              >
+                <Text style={styles.scanButtonText}>Scan QR for Attendance</Text>
+              </TouchableOpacity>
+
+              {scanStatus?.enabled ? null : (
+                <Text
+                  style={[
+                    styles.scanHint,
+                    { color: isDark ? "#aaa" : "#666" },
+                  ]}
+                >
+                  {scanStatus?.message}
+                </Text>
+              )}
+
+            </View>
           ) : (
             <TouchableOpacity
               style={styles.registerButton}
@@ -306,12 +270,10 @@ export default function EventDetailsScreen() {
         </View>
       </ScrollView>
 
-      {/* Registration Modal */}
       <EventRegistrationModal
         visible={showRegistrationModal}
-        eventId={eventId || ""}
+        eventId={resolvedEventId}
         eventTitle={event.title}
-        userId={user?.id || ""}
         onClose={() => setShowRegistrationModal(false)}
         onSuccess={handleRegistrationSuccess}
       />
@@ -373,18 +335,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
   },
-  qrStatusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-    alignSelf: "flex-start",
-    marginBottom: 16,
-  },
-  qrStatusText: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "600",
-  },
   detailsSection: {
     marginBottom: 20,
     paddingBottom: 16,
@@ -414,16 +364,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
   },
+  scanSection: {
+    marginBottom: 12,
+  },
   scanButton: {
     paddingVertical: 14,
     borderRadius: 8,
     alignItems: "center",
-    marginBottom: 12,
   },
   scanButtonText: {
     color: "#fff",
     fontWeight: "600",
     fontSize: 16,
+  },
+  scanHint: {
+    marginTop: 10,
+    fontSize: 12,
   },
   registerButton: {
     paddingVertical: 14,
