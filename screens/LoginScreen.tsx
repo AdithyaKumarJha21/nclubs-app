@@ -2,20 +2,20 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    KeyboardAvoidingView,
-    Platform,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { supabase } from "../services/supabase";
 
 type RoleRow = {
-  name: "student" | "faculty" | "admin";
+  name: "student" | "faculty" | "president" | "admin";
 };
 
 export default function LoginScreen() {
@@ -44,7 +44,7 @@ export default function LoginScreen() {
 
     setIsSubmitting(true);
 
-    /* 1️⃣ AUTH LOGIN */
+    // 1) AUTH LOGIN
     const { data, error } = await supabase.auth.signInWithPassword({
       email: email.trim(),
       password,
@@ -56,7 +56,7 @@ export default function LoginScreen() {
       return;
     }
 
-    /* 2️⃣ FETCH ROLE (TYPE-SAFE) */
+    // 2) FETCH ROLE
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("roles(name)")
@@ -69,7 +69,7 @@ export default function LoginScreen() {
       return;
     }
 
-    // 🔥 NORMALIZE ROLE (FIXES TS ERROR)
+    // Normalize role (Supabase may return object or array depending on relation)
     const roleRow = Array.isArray(profile.roles)
       ? (profile.roles[0] as RoleRow)
       : (profile.roles as RoleRow);
@@ -82,12 +82,12 @@ export default function LoginScreen() {
       return;
     }
 
-    /* 3️⃣ ROLE-BASED REDIRECT */
+    // 3) ROLE-BASED REDIRECT / BLOCK
     if (role === "faculty" || role === "admin") {
       await supabase.auth.signOut();
       Alert.alert(
         "Wrong login",
-        "Faculty can't login here. Please use the Faculty Login."
+        "Faculty/Admin can't login here. Please use the Faculty Login."
       );
       setIsSubmitting(false);
       return;
