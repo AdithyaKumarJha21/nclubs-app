@@ -95,6 +95,10 @@ export default function LoginScreen() {
     router.push("/forgot-password");
   };
 
+  const handleRegisterPress = () => {
+    router.push("/signup");
+  };
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -142,6 +146,10 @@ export default function LoginScreen() {
 
         <TouchableOpacity onPress={handleForgotPasswordPress}>
           <Text style={styles.forgot}>Forgot Password?</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={handleRegisterPress}>
+          <Text style={styles.registerLink}>New user? Register</Text>
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -198,6 +206,11 @@ const styles = StyleSheet.create({
   },
   forgot: {
     marginTop: 10,
+    color: "#2563eb",
+    textAlign: "center",
+  },
+  registerLink: {
+    marginTop: 8,
     color: "#2563eb",
     textAlign: "center",
   },
