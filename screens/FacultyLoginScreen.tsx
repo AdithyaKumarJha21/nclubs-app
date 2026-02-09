@@ -15,10 +15,10 @@ import {
 import { supabase } from "../services/supabase";
 
 type RoleRow = {
-  name: "student" | "faculty" | "president" | "admin";
+  name: "student" | "faculty" | "admin";
 };
 
-export default function LoginScreen() {
+export default function FacultyLoginScreen() {
   const router = useRouter();
 
   const [email, setEmail] = useState("");
@@ -44,7 +44,6 @@ export default function LoginScreen() {
 
     setIsSubmitting(true);
 
-    // 1) AUTH LOGIN
     const { data, error } = await supabase.auth.signInWithPassword({
       email: email.trim(),
       password,
@@ -56,7 +55,6 @@ export default function LoginScreen() {
       return;
     }
 
-    // 2) FETCH ROLE
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("roles(name)")
@@ -69,49 +67,28 @@ export default function LoginScreen() {
       return;
     }
 
-    // Normalize role (Supabase may return object or array depending on relation)
     const roleRow = Array.isArray(profile.roles)
       ? (profile.roles[0] as RoleRow)
       : (profile.roles as RoleRow);
 
     const role = roleRow?.name;
 
-    if (!role) {
-      setErrorMessage("User role not found.");
-      setIsSubmitting(false);
-      return;
-    }
-
-    // 3) ROLE-BASED REDIRECT / BLOCK
-    if (role === "faculty" || role === "admin") {
+    if (role !== "faculty") {
       await supabase.auth.signOut();
       Alert.alert(
-        "Wrong login",
-        "Faculty/Admin can't login here. Please use the Faculty Login."
+        "Access restricted",
+        "Students can't login here. Please use the Student Login."
       );
       setIsSubmitting(false);
       return;
     }
 
-    if (role === "president") {
-      router.replace("/president-home");
-    } else {
-      router.replace("/student-home");
-    }
-
+    router.replace("/faculty-home");
     setIsSubmitting(false);
   };
 
-  const handleForgotPasswordPress = () => {
-    router.push("/forgot-password");
-  };
-
-  const handleRegisterPress = () => {
-    router.push("/signup");
-  };
-
-  const handleFacultyLoginPress = () => {
-    router.push("/faculty-login");
+  const handleStudentLoginPress = () => {
+    router.push("/login");
   };
 
   return (
@@ -120,7 +97,7 @@ export default function LoginScreen() {
       behavior={Platform.select({ ios: "padding", android: undefined })}
     >
       <View style={styles.card}>
-        <Text style={styles.title}>Welcome Back!</Text>
+        <Text style={styles.title}>Faculty Login</Text>
 
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Email</Text>
@@ -174,16 +151,8 @@ export default function LoginScreen() {
           )}
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={handleForgotPasswordPress}>
-          <Text style={styles.forgot}>Forgot Password?</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={handleRegisterPress}>
-          <Text style={styles.registerLink}>New user? Register</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={handleFacultyLoginPress}>
-          <Text style={styles.facultyLink}>Login as Faculty</Text>
+        <TouchableOpacity onPress={handleStudentLoginPress}>
+          <Text style={styles.backLink}>Back to Student Login</Text>
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -251,17 +220,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     fontSize: 16,
   },
-  forgot: {
-    marginTop: 10,
-    color: "#2563eb",
-    textAlign: "center",
-  },
-  registerLink: {
-    marginTop: 8,
-    color: "#2563eb",
-    textAlign: "center",
-  },
-  facultyLink: {
+  backLink: {
     marginTop: 12,
     color: "#2563eb",
     textAlign: "center",

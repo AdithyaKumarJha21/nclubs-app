@@ -1,3 +1,4 @@
+<import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
@@ -22,6 +23,10 @@ export default function SignupScreen() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [passwordError, setPasswordError] = useState<string | null>(null);
+
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] =
+    useState(false);
 
   const passwordChecks = [
     {
@@ -53,7 +58,8 @@ export default function SignupScreen() {
 
   const metCount = passwordChecks.filter((check) => check.isMet).length;
   const isPasswordValid = metCount === passwordChecks.length;
-  const isConfirmValid = confirmPassword.length > 0 && confirmPassword === password;
+  const isConfirmValid =
+    confirmPassword.length > 0 && confirmPassword === password;
   const isFormValid = isPasswordValid && isConfirmValid;
 
   const strengthLabel =
@@ -85,7 +91,7 @@ export default function SignupScreen() {
 
     setLoading(true);
 
-    /* ✅ SOLUTION 1 — CHECK USN UNIQUENESS (FRONTEND) */
+    // ✅ CHECK USN UNIQUENESS
     const { data: existingProfile, error: usnCheckError } = await supabase
       .from("profiles")
       .select("id")
@@ -93,10 +99,7 @@ export default function SignupScreen() {
       .maybeSingle();
 
     if (existingProfile) {
-      Alert.alert(
-        "Signup failed",
-        "This USN is already registered."
-      );
+      Alert.alert("Signup failed", "This USN is already registered.");
       setLoading(false);
       return;
     }
@@ -107,7 +110,7 @@ export default function SignupScreen() {
       return;
     }
 
-    /* 1️⃣ CREATE AUTH USER */
+    // 1) CREATE AUTH USER
     const { data, error } = await supabase.auth.signUp({
       email: email.trim(),
       password,
@@ -126,16 +129,14 @@ export default function SignupScreen() {
       return;
     }
 
-    /* 2️⃣ INSERT PROFILE */
-    const { error: profileError } = await supabase
-      .from("profiles")
-      .insert({
-        id: user.id,
-        name,
-        usn,
-        email: email.trim(),
-        // role_id handled by backend (default student)
-      });
+    // 2) INSERT PROFILE
+    const { error: profileError } = await supabase.from("profiles").insert({
+      id: user.id,
+      name,
+      usn,
+      email: email.trim(),
+      // role_id handled by backend (default student)
+    });
 
     if (profileError) {
       Alert.alert("Signup failed", profileError.message);
@@ -219,25 +220,44 @@ export default function SignupScreen() {
         {/* Password */}
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Password</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Create a strong password"
-            secureTextEntry
-            value={password}
-            onChangeText={(value) => {
-              setPassword(value);
-              setPasswordError(null);
-            }}
-            onSubmitEditing={handlePasswordSubmit}
-          />
+          <View style={styles.passwordField}>
+            <TextInput
+              style={[styles.input, styles.passwordInput]}
+              placeholder="Create a strong password"
+              secureTextEntry={!isPasswordVisible}
+              value={password}
+              onChangeText={(value) => {
+                setPassword(value);
+                setPasswordError(null);
+              }}
+              onSubmitEditing={handlePasswordSubmit}
+            />
+            <TouchableOpacity
+              onPress={() => setIsPasswordVisible((prev) => !prev)}
+              accessibilityLabel={
+                isPasswordVisible ? "Hide password" : "Show password"
+              }
+              style={styles.passwordToggle}
+            >
+              <Ionicons
+                name={isPasswordVisible ? "eye-off" : "eye"}
+                size={20}
+                color="#64748b"
+              />
+            </TouchableOpacity>
+          </View>
+
           <View style={styles.passwordMeta}>
             <Text style={styles.passwordStrengthLabel}>
               Strength:{" "}
-              <Text style={[styles.passwordStrengthValue, { color: strengthColor }]}>
+              <Text
+                style={[styles.passwordStrengthValue, { color: strengthColor }]}
+              >
                 {strengthLabel}
               </Text>
             </Text>
           </View>
+
           <View style={styles.passwordChecklist}>
             {passwordChecks.map((check) => (
               <Text
@@ -254,19 +274,38 @@ export default function SignupScreen() {
           </View>
         </View>
 
+        {/* Confirm Password */}
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Confirm Password</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Re-enter your password"
-            secureTextEntry
-            value={confirmPassword}
-            onChangeText={(value) => {
-              setConfirmPassword(value);
-              setPasswordError(null);
-            }}
-            onSubmitEditing={handlePasswordSubmit}
-          />
+          <View style={styles.passwordField}>
+            <TextInput
+              style={[styles.input, styles.passwordInput]}
+              placeholder="Re-enter your password"
+              secureTextEntry={!isConfirmPasswordVisible}
+              value={confirmPassword}
+              onChangeText={(value) => {
+                setConfirmPassword(value);
+                setPasswordError(null);
+              }}
+              onSubmitEditing={handlePasswordSubmit}
+            />
+            <TouchableOpacity
+              onPress={() => setIsConfirmPasswordVisible((prev) => !prev)}
+              accessibilityLabel={
+                isConfirmPasswordVisible
+                  ? "Hide confirm password"
+                  : "Show confirm password"
+              }
+              style={styles.passwordToggle}
+            >
+              <Ionicons
+                name={isConfirmPasswordVisible ? "eye-off" : "eye"}
+                size={20}
+                color="#64748b"
+              />
+            </TouchableOpacity>
+          </View>
+
           {!!confirmPassword.length && (
             <Text
               style={[
@@ -348,6 +387,19 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
     fontSize: 14,
     backgroundColor: "#f9fafb",
+  },
+  passwordField: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  passwordInput: {
+    flex: 1,
+    paddingRight: 40,
+  },
+  passwordToggle: {
+    position: "absolute",
+    right: 10,
+    padding: 4,
   },
   passwordMeta: {
     marginTop: 6,
