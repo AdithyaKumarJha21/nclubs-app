@@ -31,6 +31,22 @@ export type EventDetail = EventListItem & {
   status: string;
 };
 
+export type EventRow = {
+  id: string;
+  title: string;
+  description: string | null;
+  location: string | null;
+  event_date: string;
+  start_time: string;
+  end_time: string;
+  created_by: string;
+  qr_enabled: boolean;
+  qr_token: string | null;
+  qr_updated_at: string | null;
+};
+
+type SupabaseRequestError = Error & { code?: string };
+
 const isValidDateParts = (year: number, month: number, day: number): boolean => {
   if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
     return false;
@@ -69,10 +85,29 @@ const parseTime = (value: string): { hour: number; minute: number } | null => {
   return { hour, minute };
 };
 
-const generateQrToken = (): string => {
-  const segments = Array.from({ length: 5 }, () => Math.random().toString(36).slice(2));
-  return segments.join("");
+const generateSecureQrToken = (): string => {
+  if (globalThis.crypto?.getRandomValues) {
+    const bytes = new Uint8Array(32);
+    globalThis.crypto.getRandomValues(bytes);
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+
+  // Fallback for environments without Web Crypto: timestamp + multiple Math.random segments.
+  const fallbackSegments = Array.from({ length: 4 }, () =>
+    Math.random().toString(36).slice(2)
+  );
+  return `${Date.now().toString(36)}${fallbackSegments.join("")}`;
 };
+
+const buildSupabaseError = (error: { code?: string; message?: string }): SupabaseRequestError => {
+  const normalized = normalizeSupabaseError(error);
+  const err = new Error(normalized) as SupabaseRequestError;
+  err.code = error.code;
+  return err;
+};
+
+const eventRowSelect =
+  "id, title, description, location, event_date, start_time, end_time, created_by, qr_enabled, qr_token, qr_updated_at";
 
 export const getEventsForStudent = async (): Promise<EventListItem[]> => {
   const { data, error } = await supabase
@@ -103,10 +138,7 @@ export const getEventById = async (id: string): Promise<EventDetail> => {
   return data as EventDetail;
 };
 
-export const toggleEventQr = async (
-  eventId: string,
-  enabled: boolean
-): Promise<EventDetail> => {
+export const generateEventQr = async (eventId: string): Promise<EventRow> => {
   const {
     data: { user },
     error: userError,
@@ -116,35 +148,54 @@ export const toggleEventQr = async (
     throw new Error("Not authorized.");
   }
 
-  console.log("🔁 Toggling QR", { eventId, enabled, userId: user.id });
-
-  const updates: {
-    qr_enabled: boolean;
-    qr_token?: string;
-    qr_updated_at: string;
-  } = {
-    qr_enabled: enabled,
-    qr_updated_at: new Date().toISOString(),
-  };
-
-  if (enabled) {
-    updates.qr_token = generateQrToken();
-  }
+  const qrToken = generateSecureQrToken();
+  console.log("🔐 Generate QR", { eventId, userId: user.id, tokenLength: qrToken.length });
 
   const { data, error } = await supabase
     .from("events")
-    .update(updates)
+    .update({
+      qr_enabled: true,
+      qr_token: qrToken,
+      qr_updated_at: new Date().toISOString(),
+    })
     .eq("id", eventId)
-    .select(
-      "id, title, description, location, event_date, start_time, end_time, club_id, created_by, qr_enabled, qr_token, qr_updated_at, status"
-    )
+    .select(eventRowSelect)
     .single();
 
   if (error) {
-    throw new Error(normalizeSupabaseError(error));
+    throw buildSupabaseError(error);
   }
 
-  return data as EventDetail;
+  return data as EventRow;
+};
+
+export const disableEventQr = async (eventId: string): Promise<EventRow> => {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    throw new Error("Not authorized.");
+  }
+
+  console.log("🔐 Disable QR", { eventId, userId: user.id });
+
+  const { data, error } = await supabase
+    .from("events")
+    .update({
+      qr_enabled: false,
+      qr_updated_at: new Date().toISOString(),
+    })
+    .eq("id", eventId)
+    .select(eventRowSelect)
+    .single();
+
+  if (error) {
+    throw buildSupabaseError(error);
+  }
+
+  return data as EventRow;
 };
 
 export const createEvent = async (input: CreateEventInput): Promise<void> => {
