@@ -11,7 +11,12 @@ import {
 } from "react-native";
 import QRCode from "react-native-qrcode-svg";
 import { useAuth } from "../context/AuthContext";
-import { EventDetail, getEventById, toggleEventQr } from "../services/events";
+import {
+  EventRow,
+  disableEventQr,
+  generateEventQr,
+  getEventById,
+} from "../services/events";
 import { useTheme } from "../theme/ThemeContext";
 import { formatTimeLocal } from "../utils/timeWindow";
 import { buildQrPayload } from "../utils/qr";
@@ -22,9 +27,10 @@ export default function PresidentEventDetailScreen() {
   const { user } = useAuth();
   const { isDark } = useTheme();
 
-  const [event, setEvent] = useState<EventDetail | null>(null);
+  const [event, setEvent] = useState<EventRow | null>(null);
   const [loading, setLoading] = useState(true);
-  const [updating, setUpdating] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [disabling, setDisabling] = useState(false);
 
   const isOwner = !!event && !!user && event.created_by === user.id;
 
@@ -37,9 +43,11 @@ export default function PresidentEventDetailScreen() {
         const data = await getEventById(id);
         setEvent(data);
         console.log("📌 President event detail", {
-          userId: user?.id,
           eventId: id,
-          qrEnabled: data.qr_enabled,
+          isOwner: user?.id === data.created_by,
+          qr_enabled: data.qr_enabled,
+          hasToken: !!data.qr_token,
+          tokenLength: data.qr_token?.length ?? 0,
         });
       } catch (error) {
         console.error("Error fetching event:", error);
@@ -57,20 +65,54 @@ export default function PresidentEventDetailScreen() {
     return buildQrPayload(event.id, event.qr_token);
   }, [event]);
 
-  const handleToggleQr = async (enabled: boolean) => {
-    if (!event) return;
+  const handleQrError = (error: unknown) => {
+    const code =
+      typeof error === "object" && error && "code" in error
+        ? (error as { code?: string }).code
+        : undefined;
+    const message =
+      code === "42501"
+        ? "Not authorized to manage QR for this event."
+        : "Something went wrong. Try again.";
+    console.error("Error updating QR:", { code, message });
+    Alert.alert("Error", message);
+  };
+
+  const handleGenerateQr = async () => {
+    if (!event || !isOwner || event.qr_token) return;
 
     try {
-      setUpdating(true);
-      const updated = await toggleEventQr(event.id, enabled);
+      setGenerating(true);
+      const updated = await generateEventQr(event.id);
       setEvent(updated);
-      Alert.alert("Success", enabled ? "QR generated!" : "QR disabled.");
+      Alert.alert("Success", "QR generated");
+      console.log("✅ QR generated", {
+        eventId: event.id,
+        tokenLength: updated.qr_token?.length ?? 0,
+      });
     } catch (error: unknown) {
-      console.error("Error updating QR:", error);
-      const message = error instanceof Error ? error.message : "Failed to update QR.";
-      Alert.alert("Error", message);
+      handleQrError(error);
     } finally {
-      setUpdating(false);
+      setGenerating(false);
+    }
+  };
+
+  const handleDisableQr = async () => {
+    if (!event || !isOwner || !event.qr_enabled) return;
+
+    try {
+      setDisabling(true);
+      const updated = await disableEventQr(event.id);
+      setEvent(updated);
+      Alert.alert("Success", "QR disabled");
+      console.log("✅ QR disabled", {
+        eventId: event.id,
+        qr_enabled: updated.qr_enabled,
+      });
+    } catch (error: unknown) {
+      handleQrError(error);
+    } finally {
+      setDisabling(false);
     }
   };
 
@@ -151,50 +193,49 @@ export default function PresidentEventDetailScreen() {
           </Text>
 
           <View style={styles.qrControls}>
-            {!event.qr_enabled ? (
+            {!event.qr_token ? (
               <TouchableOpacity
                 style={[styles.actionButton, styles.generateButton]}
-                onPress={() => handleToggleQr(true)}
-                disabled={updating}
+                onPress={handleGenerateQr}
+                disabled={generating || disabling}
               >
                 <Text style={styles.actionButtonText}>
-                  {updating ? "Generating..." : "Generate QR"}
+                  {generating ? "Generating..." : "Generate QR"}
                 </Text>
               </TouchableOpacity>
             ) : (
               <View style={styles.enabledActions}>
                 <TouchableOpacity
                   style={[styles.actionButton, styles.disableButton]}
-                  onPress={() => handleToggleQr(false)}
-                  disabled={updating}
+                  onPress={handleDisableQr}
+                  disabled={!event.qr_enabled || generating || disabling}
                 >
                   <Text style={styles.actionButtonText}>
-                    {updating ? "Updating..." : "Disable QR"}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.actionButton, styles.regenerateButton]}
-                  onPress={() => handleToggleQr(true)}
-                  disabled={updating}
-                >
-                  <Text style={styles.actionButtonText}>
-                    {updating ? "Updating..." : "Regenerate"}
+                    {disabling ? "Disabling..." : "Disable QR"}
                   </Text>
                 </TouchableOpacity>
               </View>
             )}
           </View>
 
-          {event.qr_enabled && qrValue ? (
+          {event.qr_token ? (
             <View style={styles.qrDisplay}>
-              <QRCode value={qrValue} size={180} />
+              {qrValue ? <QRCode value={qrValue} size={180} /> : null}
               <Text
                 style={[
                   styles.qrCaption,
                   { color: isDark ? "#aaa" : "#666" },
                 ]}
               >
-                Students can scan this QR during the event window.
+                QR already generated.
+              </Text>
+              <Text
+                style={[
+                  styles.qrCaption,
+                  { color: isDark ? "#aaa" : "#666" },
+                ]}
+              >
+                Event QR (shows eventId + token)
               </Text>
             </View>
           ) : (
@@ -205,7 +246,7 @@ export default function PresidentEventDetailScreen() {
         </View>
       ) : (
         <Text style={[styles.qrCaption, { color: isDark ? "#aaa" : "#666" }]}>
-          Only the event creator can manage QR settings.
+          You can only manage QR for events you created.
         </Text>
       )}
     </ScrollView>
@@ -301,10 +342,6 @@ const styles = StyleSheet.create({
   },
   disableButton: {
     backgroundColor: "#ef4444",
-    flex: 1,
-  },
-  regenerateButton: {
-    backgroundColor: "#2563eb",
     flex: 1,
   },
   actionButtonText: {
