@@ -1,3 +1,4 @@
+import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
   Alert,
@@ -12,15 +13,73 @@ import {
 import { supabase } from "../services/supabase";
 
 export default function SignupScreen() {
+  const router = useRouter();
+
   const [name, setName] = useState("");
   const [usn, setUsn] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+
+  const passwordChecks = [
+    {
+      key: "length",
+      label: "Password must be at least 8 characters",
+      isMet: password.length >= 8,
+    },
+    {
+      key: "uppercase",
+      label: "Must include at least one uppercase letter",
+      isMet: /[A-Z]/.test(password),
+    },
+    {
+      key: "lowercase",
+      label: "Must include at least one lowercase letter",
+      isMet: /[a-z]/.test(password),
+    },
+    {
+      key: "number",
+      label: "Must include at least one number",
+      isMet: /\d/.test(password),
+    },
+    {
+      key: "special",
+      label: "Must include at least one special character (!@#$%^&* etc.)",
+      isMet: /[!@#$%^&*()_+\-=[\]{}|\\:;"'<>,.?/]/.test(password),
+    },
+  ];
+
+  const metCount = passwordChecks.filter((check) => check.isMet).length;
+  const isPasswordValid = metCount === passwordChecks.length;
+  const isConfirmValid = confirmPassword.length > 0 && confirmPassword === password;
+  const isFormValid = isPasswordValid && isConfirmValid;
+
+  const strengthLabel =
+    metCount <= 2 ? "Weak" : metCount <= 4 ? "Medium" : "Strong";
+  const strengthColor =
+    metCount <= 2 ? "#dc2626" : metCount <= 4 ? "#f59e0b" : "#16a34a";
 
   const handleSignupPress = async () => {
-    if (!name || !usn || !email || !password) {
+    setPasswordError(null);
+
+    if (!name || !usn || !email || !password || !confirmPassword) {
       Alert.alert("Missing details", "Please fill all the fields.");
+      return;
+    }
+
+    if (!isPasswordValid) {
+      const missingMessage = passwordChecks
+        .filter((check) => !check.isMet)
+        .map((check) => check.label)
+        .join("\n");
+      setPasswordError(missingMessage);
+      return;
+    }
+
+    if (!isConfirmValid) {
+      setPasswordError("Passwords do not match.");
       return;
     }
 
@@ -92,6 +151,24 @@ export default function SignupScreen() {
     setLoading(false);
   };
 
+  const handleLoginPress = () => {
+    router.push("/login");
+  };
+
+  const handlePasswordSubmit = () => {
+    if (isFormValid && !loading) {
+      handleSignupPress();
+    } else if (!isPasswordValid) {
+      const missingMessage = passwordChecks
+        .filter((check) => !check.isMet)
+        .map((check) => check.label)
+        .join("\n");
+      setPasswordError(missingMessage);
+    } else if (!isConfirmValid) {
+      setPasswordError("Passwords do not match.");
+    }
+  };
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -147,18 +224,69 @@ export default function SignupScreen() {
             placeholder="Create a strong password"
             secureTextEntry
             value={password}
-            onChangeText={setPassword}
+            onChangeText={(value) => {
+              setPassword(value);
+              setPasswordError(null);
+            }}
+            onSubmitEditing={handlePasswordSubmit}
           />
-          <Text style={styles.hintText}>
-            Must be 8–15 characters with uppercase, lowercase, number & special
-            character.
-          </Text>
+          <View style={styles.passwordMeta}>
+            <Text style={styles.passwordStrengthLabel}>
+              Strength:{" "}
+              <Text style={[styles.passwordStrengthValue, { color: strengthColor }]}>
+                {strengthLabel}
+              </Text>
+            </Text>
+          </View>
+          <View style={styles.passwordChecklist}>
+            {passwordChecks.map((check) => (
+              <Text
+                key={check.key}
+                style={[
+                  styles.checklistItem,
+                  { color: check.isMet ? "#16a34a" : "#dc2626" },
+                ]}
+              >
+                {check.isMet ? "✓ " : "• "}
+                {check.label}
+              </Text>
+            ))}
+          </View>
         </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Confirm Password</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Re-enter your password"
+            secureTextEntry
+            value={confirmPassword}
+            onChangeText={(value) => {
+              setConfirmPassword(value);
+              setPasswordError(null);
+            }}
+            onSubmitEditing={handlePasswordSubmit}
+          />
+          {!!confirmPassword.length && (
+            <Text
+              style={[
+                styles.confirmationText,
+                { color: isConfirmValid ? "#16a34a" : "#dc2626" },
+              ]}
+            >
+              {isConfirmValid ? "Passwords match" : "Passwords do not match"}
+            </Text>
+          )}
+        </View>
+
+        {passwordError && (
+          <Text style={styles.passwordError}>{passwordError}</Text>
+        )}
 
         <TouchableOpacity
           style={styles.signupButton}
           onPress={handleSignupPress}
-          disabled={loading}
+          disabled={!isFormValid || loading}
         >
           <Text style={styles.signupButtonText}>
             {loading ? "Creating..." : "Create Account"}
@@ -168,6 +296,10 @@ export default function SignupScreen() {
         <Text style={styles.helperText}>
           Your profile will be securely stored after signup.
         </Text>
+
+        <TouchableOpacity onPress={handleLoginPress}>
+          <Text style={styles.loginLink}>Already a user? Log in</Text>
+        </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
   );
@@ -217,10 +349,31 @@ const styles = StyleSheet.create({
     fontSize: 14,
     backgroundColor: "#f9fafb",
   },
-  hintText: {
-    fontSize: 11,
+  passwordMeta: {
+    marginTop: 6,
+  },
+  passwordStrengthLabel: {
+    fontSize: 12,
     color: "#6b7280",
-    marginTop: 4,
+  },
+  passwordStrengthValue: {
+    fontWeight: "700",
+  },
+  passwordChecklist: {
+    marginTop: 8,
+    gap: 4,
+  },
+  checklistItem: {
+    fontSize: 12,
+  },
+  confirmationText: {
+    marginTop: 6,
+    fontSize: 12,
+  },
+  passwordError: {
+    color: "#dc2626",
+    fontSize: 12,
+    marginBottom: 8,
   },
   signupButton: {
     backgroundColor: "#16a34a",
@@ -239,5 +392,11 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: "#6b7280",
     textAlign: "center",
+  },
+  loginLink: {
+    marginTop: 12,
+    color: "#2563eb",
+    textAlign: "center",
+    fontSize: 13,
   },
 });
