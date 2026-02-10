@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useRouter } from "expo-router";
 import {
   Alert,
   Modal,
@@ -29,10 +30,11 @@ export default function EventRegistrationModal({
   onClose,
   onSuccess,
 }: EventRegistrationModalProps) {
+  const router = useRouter();
   const { isDark } = useTheme();
   const [email, setEmail] = useState("");
   const [usn, setUsn] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
@@ -56,6 +58,10 @@ export default function EventRegistrationModal({
   }, [visible, initialEmail, email]);
 
   const handleRegister = async () => {
+    if (isSubmitting) {
+      return;
+    }
+
     if (!email.trim() || !usn.trim()) {
       Alert.alert("Validation Error", "Please fill in both email and USN");
       return;
@@ -67,12 +73,12 @@ export default function EventRegistrationModal({
     }
 
     try {
-      setLoading(true);
+      setIsSubmitting(true);
 
       const { registration, alreadyRegistered } = await registerForEvent(
         eventId,
-        email,
-        usn
+        usn,
+        email
       );
 
       if (!registration) {
@@ -80,7 +86,7 @@ export default function EventRegistrationModal({
       }
 
       if (alreadyRegistered) {
-        Alert.alert("Already Registered", "You are already registered for this event");
+        Alert.alert("Already registered", "You are already registered");
       } else {
         Alert.alert("Success", "Successfully registered!");
       }
@@ -89,23 +95,28 @@ export default function EventRegistrationModal({
       setEmail("");
       setUsn("");
       onClose();
+      router.replace({ pathname: "/event-details", params: { eventId } });
     } catch (error) {
       console.error("Registration error:", error);
 
       const message =
         error instanceof Error && error.message
           ? error.message
-          : "Failed to register for event";
+          : "Registration failed";
 
-      // Workflow-safe: if backend signals already registered, show the correct alert
-      if (message.toLowerCase().includes("already registered") || message.toLowerCase().includes("already")) {
-        Alert.alert("Already Registered", "You are already registered for this event");
+      if (message === "You are already registered") {
+        Alert.alert("Already registered", "You are already registered");
         return;
       }
 
-      Alert.alert("Error", message);
+      if (message === "Not allowed (RLS)") {
+        Alert.alert("Not allowed", "Not allowed (RLS)");
+        return;
+      }
+
+      Alert.alert("Error", "Registration failed");
     } finally {
-      setLoading(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -142,7 +153,7 @@ export default function EventRegistrationModal({
               value={email}
               onChangeText={setEmail}
               keyboardType="email-address"
-              editable={!loading}
+              editable={!isSubmitting}
               style={[
                 styles.input,
                 {
@@ -163,8 +174,8 @@ export default function EventRegistrationModal({
               placeholder="1NMxx..."
               placeholderTextColor={isDark ? "#666" : "#ccc"}
               value={usn}
-              onChangeText={setUsn}
-              editable={!loading}
+              onChangeText={(value) => setUsn(value.toUpperCase())}
+              editable={!isSubmitting}
               style={[
                 styles.input,
                 {
@@ -179,20 +190,20 @@ export default function EventRegistrationModal({
           {/* Buttons */}
           <View style={styles.buttonContainer}>
             <TouchableOpacity
-              style={[styles.cancelButton, { opacity: loading ? 0.6 : 1 }]}
+              style={[styles.cancelButton, { opacity: isSubmitting ? 0.6 : 1 }]}
               onPress={onClose}
-              disabled={loading}
+              disabled={isSubmitting}
             >
               <Text style={styles.cancelButtonText}>Cancel</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.registerButton, { opacity: loading ? 0.6 : 1 }]}
+              style={[styles.registerButton, { opacity: isSubmitting ? 0.6 : 1 }]}
               onPress={handleRegister}
-              disabled={loading}
+              disabled={isSubmitting}
             >
               <Text style={styles.registerButtonText}>
-                {loading ? "Registering..." : "Register"}
+                {isSubmitting ? "Registering..." : "Register"}
               </Text>
             </TouchableOpacity>
           </View>
