@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { supabase } from "../services/supabase";
 
 export type Role = "student" | "faculty" | "president" | "admin";
@@ -29,6 +29,7 @@ const AuthContext = createContext<AuthContextType>({
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const hasResolvedInitialSession = useRef(false);
 
   const clearInvalidSession = async () => {
     await supabase.auth.signOut({ scope: "local" });
@@ -48,7 +49,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const loadSession = async () => {
-    setLoading(true);
+    if (!hasResolvedInitialSession.current) {
+      setLoading(true);
+    }
 
     try {
       const {
@@ -57,6 +60,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (!session) {
         setUser(null);
+        hasResolvedInitialSession.current = true;
         setLoading(false);
         return;
       }
@@ -70,6 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (error || !data?.roles) {
         console.error("Role fetch failed:", error);
         setUser(null);
+        hasResolvedInitialSession.current = true;
         setLoading(false);
         return;
       }
@@ -86,6 +91,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!roleName) {
         console.error("Invalid role data:", data.roles);
         setUser(null);
+        hasResolvedInitialSession.current = true;
         setLoading(false);
         return;
       }
@@ -102,17 +108,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         role: normalizedRole,
       });
 
+      hasResolvedInitialSession.current = true;
       setLoading(false);
     } catch (err) {
       if (isInvalidRefreshTokenError(err)) {
         console.warn("Session refresh token is invalid. Clearing local session.");
         await clearInvalidSession();
+        hasResolvedInitialSession.current = true;
         setLoading(false);
         return;
       }
 
       console.error("Unexpected auth error:", err);
       setUser(null);
+      hasResolvedInitialSession.current = true;
       setLoading(false);
     }
   };
