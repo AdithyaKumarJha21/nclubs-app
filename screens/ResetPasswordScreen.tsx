@@ -90,7 +90,7 @@ export default function ResetPasswordScreen() {
         console.log("Auth event", event);
       }
 
-      if (event === "PASSWORD_RECOVERY" || (event === "SIGNED_IN" && session)) {
+      if (event === "PASSWORD_RECOVERY" || session) {
         setIsRecoveryReady(true);
       }
     });
@@ -103,7 +103,7 @@ export default function ResetPasswordScreen() {
   }, []);
 
   const isFormValid = useMemo(() => {
-    return newPassword.length >= 6 && newPassword === confirmPassword;
+    return newPassword.length >= 8 && newPassword === confirmPassword;
   }, [confirmPassword, newPassword]);
 
   const handleUpdatePassword = async () => {
@@ -112,8 +112,8 @@ export default function ResetPasswordScreen() {
       return;
     }
 
-    if (newPassword.length < 6) {
-      Alert.alert("Error", "Password must be at least 6 characters.");
+    if (newPassword.length < 8) {
+      Alert.alert("Error", "Password must be at least 8 characters.");
       return;
     }
 

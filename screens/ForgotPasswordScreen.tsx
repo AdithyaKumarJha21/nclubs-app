@@ -47,9 +47,8 @@ export default function ForgotPasswordScreen() {
 
     setLoading(false);
 
-    if (error) {
-      Alert.alert("Error", error.message);
-      return;
+    if (error && __DEV__) {
+      console.log("resetPasswordForEmail error", error.message);
     }
 
     Alert.alert(
