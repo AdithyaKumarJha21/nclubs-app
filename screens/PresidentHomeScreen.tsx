@@ -44,6 +44,7 @@ export default function PresidentHomeScreen() {
   const [transferEmail, setTransferEmail] = useState("");
   const [confirmText, setConfirmText] = useState("");
   const [isTransferring, setIsTransferring] = useState(false);
+  const [showTransferSection, setShowTransferSection] = useState(false);
 
   /* ===============================
      ROUTE PROTECTION (SAFE)
@@ -322,57 +323,61 @@ export default function PresidentHomeScreen() {
 
             <TouchableOpacity
               style={styles.button}
-              onPress={() => router.push("/club-profile")}
+              onPress={() => setShowTransferSection((previous) => !previous)}
             >
-              <Text style={styles.buttonText}>Change President</Text>
+              <Text style={styles.buttonText}>
+                {showTransferSection ? "Close Change President" : "Change President"}
+              </Text>
             </TouchableOpacity>
 
-            <View style={styles.transferSection}>
-              <Text style={[styles.transferTitle, { color: theme.text }]}>Transfer President</Text>
-              <Text style={[styles.transferHint, { color: theme.text }]}>Type the new president email and the exact confirmation phrase.</Text>
+            {showTransferSection ? (
+              <View style={styles.transferSection}>
+                <Text style={[styles.transferTitle, { color: theme.text }]}>Transfer President</Text>
+                <Text style={[styles.transferHint, { color: theme.text }]}>Type the new president email and the exact confirmation phrase.</Text>
 
-              <TextInput
-                style={[styles.transferInput, { color: theme.text, borderColor: "#d1d5db" }]}
-                placeholder="new-president@email.com"
-                placeholderTextColor="#9ca3af"
-                value={transferEmail}
-                onChangeText={setTransferEmail}
-                autoCapitalize="none"
-                keyboardType="email-address"
-              />
-              {emailError ? <Text style={styles.inlineError}>{emailError}</Text> : null}
+                <TextInput
+                  style={[styles.transferInput, { color: theme.text, borderColor: "#d1d5db" }]}
+                  placeholder="new-president@email.com"
+                  placeholderTextColor="#9ca3af"
+                  value={transferEmail}
+                  onChangeText={setTransferEmail}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                />
+                {emailError ? <Text style={styles.inlineError}>{emailError}</Text> : null}
 
-              <TextInput
-                style={[styles.transferInput, { color: theme.text, borderColor: "#d1d5db" }]}
-                placeholder={TRANSFER_CONFIRMATION_PHRASE}
-                placeholderTextColor="#9ca3af"
-                value={confirmText}
-                onChangeText={setConfirmText}
-                autoCapitalize="characters"
-              />
-              {confirmError ? <Text style={styles.inlineError}>{confirmError}</Text> : null}
+                <TextInput
+                  style={[styles.transferInput, { color: theme.text, borderColor: "#d1d5db" }]}
+                  placeholder={TRANSFER_CONFIRMATION_PHRASE}
+                  placeholderTextColor="#9ca3af"
+                  value={confirmText}
+                  onChangeText={setConfirmText}
+                  autoCapitalize="characters"
+                />
+                {confirmError ? <Text style={styles.inlineError}>{confirmError}</Text> : null}
 
-              {clubIdLoading ? (
-                <View style={styles.clubStatusRow}>
-                  <ActivityIndicator size="small" color="#2563eb" />
-                  <Text style={[styles.transferHint, { color: theme.text }]}>Loading club assignment...</Text>
-                </View>
-              ) : !clubId ? (
-                <Text style={styles.inlineError}>No club assigned.</Text>
-              ) : null}
+                {clubIdLoading ? (
+                  <View style={styles.clubStatusRow}>
+                    <ActivityIndicator size="small" color="#2563eb" />
+                    <Text style={[styles.transferHint, { color: theme.text }]}>Loading club assignment...</Text>
+                  </View>
+                ) : !clubId ? (
+                  <Text style={styles.inlineError}>No club assigned.</Text>
+                ) : null}
 
-              <TouchableOpacity
-                style={[styles.button, isTransferDisabled && styles.disabledButton]}
-                onPress={handleTransferPresident}
-                disabled={isTransferDisabled}
-              >
-                {isTransferring ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.buttonText}>Transfer President</Text>
-                )}
-              </TouchableOpacity>
-            </View>
+                <TouchableOpacity
+                  style={[styles.button, isTransferDisabled && styles.disabledButton]}
+                  onPress={handleTransferPresident}
+                  disabled={isTransferDisabled}
+                >
+                  {isTransferring ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.buttonText}>Transfer President</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            ) : null}
           </View>
         }
         ListEmptyComponent={
