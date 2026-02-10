@@ -3,7 +3,7 @@ import { supabase } from "./supabase";
 
 export type UserWithRole = {
   id: string;
-  role?: Role;
+  role?: Role | string;
   role_id?: string | null;
 };
 
@@ -157,6 +157,51 @@ export const getMyClubs = async (
 
   return [];
 };
+
+export async function getMyClubIdsForEvents(
+  role: "faculty" | "president" | "admin"
+): Promise<string[]> {
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return [];
+  }
+
+  if (role === "admin") {
+    return ["*"];
+  }
+
+  if (role === "faculty") {
+    const { data, error } = await supabase
+      .from("faculty_assignments")
+      .select("club_id")
+      .eq("faculty_id", user.id);
+
+    if (error || !data) {
+      return [];
+    }
+
+    return data
+      .map((row) => row.club_id)
+      .filter((clubId): clubId is string => Boolean(clubId) && isValidUuid(clubId));
+  }
+
+  const { data, error } = await supabase
+    .from("president_assignments")
+    .select("club_id")
+    .eq("user_id", user.id);
+
+  if (error || !data) {
+    return [];
+  }
+
+  return data
+    .map((row) => row.club_id)
+    .filter((clubId): clubId is string => Boolean(clubId) && isValidUuid(clubId));
+}
 
 export const getMyPrimaryClubId = async (
   user: UserWithRole | null
