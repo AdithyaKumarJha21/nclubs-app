@@ -13,8 +13,8 @@ import EventCreationModal, {
   EventFormData,
 } from "../components/EventCreationModal";
 import { useAuth } from "../context/AuthContext";
-import { getMyClubIdsForEvents } from "../services/assignments";
 import { createEvent, listEventsForClubIds, ManagedEventRow } from "../services/events";
+import { getMyManagedClubIds } from "../services/permissions";
 import { supabase } from "../services/supabase";
 import { useTheme } from "../theme/ThemeContext";
 
@@ -34,6 +34,7 @@ export default function PresidentEventManagementScreen() {
   const [clubIds, setClubIds] = useState<string[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const noClubAssigned = clubIds.length === 0;
+  const isRoleAllowed = user?.role === "faculty" || user?.role === "president" || user?.role === "admin";
 
   const fetchEventsForRole = useCallback(async () => {
     if (!user || (user.role !== "faculty" && user.role !== "president" && user.role !== "admin")) {
@@ -44,19 +45,17 @@ export default function PresidentEventManagementScreen() {
       setLoading(true);
       setErrorMessage(null);
 
-      const roleForAssignments =
-        user.role === "admin" ? "admin" : user.role === "faculty" ? "faculty" : "president";
-      const resolvedClubIds = await getMyClubIdsForEvents(roleForAssignments);
+      const resolvedClubIds = await getMyManagedClubIds();
       const fetchedEvents = await listEventsForClubIds(resolvedClubIds);
 
       console.log({
-        role: roleForAssignments,
+        role: user.role,
         userId: user.id,
         clubIds: resolvedClubIds,
         eventsCount: fetchedEvents.length,
       });
 
-      setClubIds(resolvedClubIds.includes("*") ? [] : resolvedClubIds);
+      setClubIds(resolvedClubIds);
       setClubId(resolvedClubIds[0] ?? null);
       setEvents(fetchedEvents);
     } catch (error: unknown) {
@@ -78,10 +77,13 @@ export default function PresidentEventManagementScreen() {
   }, [user]);
 
   useEffect(() => {
-    if (user?.role === "faculty" || user?.role === "president" || user?.role === "admin") {
-      fetchEventsForRole();
+    if (!isRoleAllowed) {
+      setLoading(false);
+      return;
     }
-  }, [fetchEventsForRole, user?.role]);
+
+    fetchEventsForRole();
+  }, [fetchEventsForRole, isRoleAllowed]);
 
   const handleCreateEvent = async (formData: EventFormData) => {
     if (!user) return;
@@ -165,6 +167,14 @@ export default function PresidentEventManagementScreen() {
       setDeletingEventId("");
     }
   };
+
+  if (!isRoleAllowed) {
+    return (
+      <View style={[styles.container, { backgroundColor: isDark ? "#1a1a1a" : "#fff" }]}>
+        <Text style={[styles.assignmentWarning, { color: isDark ? "#f87171" : "#b91c1c" }]}>Not authorized.</Text>
+      </View>
+    );
+  }
 
   return (
     <View
