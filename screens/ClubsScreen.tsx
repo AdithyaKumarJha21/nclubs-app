@@ -5,6 +5,7 @@ import ClubCard from "../components/ClubCard";
 import ClubSearchBar from "../components/ClubSearchBar";
 import ClubSearchEmptyState from "../components/ClubSearchEmptyState";
 import { useAuth } from "../context/AuthContext";
+import { getMyClubs } from "../services/assignments";
 import { supabase } from "../services/supabase";
 import { useTheme } from "../theme/ThemeContext";
 
@@ -19,6 +20,7 @@ export default function ClubsScreen() {
   const router = useRouter();
   const { theme } = useTheme();
   const { user } = useAuth();
+
   const [clubs, setClubs] = useState<Club[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -39,7 +41,14 @@ export default function ClubsScreen() {
         return;
       }
 
-      setClubs(data ?? []);
+      let visibleClubs = data ?? [];
+
+      if (user?.role === "president" || user?.role === "faculty") {
+        const myClubIds = await getMyClubs(user);
+        visibleClubs = visibleClubs.filter((club) => myClubIds.includes(club.id));
+      }
+
+      setClubs(visibleClubs);
       setLoading(false);
     };
 
@@ -50,9 +59,7 @@ export default function ClubsScreen() {
   const normalizedQuery = trimmedQuery.toLowerCase();
 
   const filteredClubs = useMemo(() => {
-    if (!normalizedQuery) {
-      return clubs;
-    }
+    if (!normalizedQuery) return clubs;
 
     return clubs.filter((club) => {
       const nameMatch = club.name.toLowerCase().includes(normalizedQuery);
@@ -65,7 +72,8 @@ export default function ClubsScreen() {
   }, [clubs, normalizedQuery]);
 
   const title = user?.role === "student" ? "View Clubs" : "Manage Clubs";
-  const showSearchEmptyState = normalizedQuery.length > 0 && filteredClubs.length === 0;
+  const showSearchEmptyState =
+    normalizedQuery.length > 0 && filteredClubs.length === 0;
 
   if (loading) return null;
 
@@ -93,7 +101,9 @@ export default function ClubsScreen() {
               onClear={() => setSearchQuery("")}
             />
           ) : (
-            <Text style={[styles.emptyText, { color: theme.text }]}>No clubs found.</Text>
+            <Text style={[styles.emptyText, { color: theme.text }]}>
+              No clubs found.
+            </Text>
           )
         }
         renderItem={({ item }) => (
