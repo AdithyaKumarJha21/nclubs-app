@@ -1,4 +1,5 @@
 import * as Linking from "expo-linking";
+import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
   Alert,
@@ -13,6 +14,7 @@ import {
 import { supabase } from "../services/supabase";
 
 export default function ForgotPasswordScreen() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -29,10 +31,10 @@ export default function ForgotPasswordScreen() {
       return;
     }
 
-    const redirectTo = Linking.createURL("/reset-password");
+    const redirectTo = "nclubs://reset-password";
 
     if (__DEV__) {
-      console.log("redirectTo", redirectTo);
+      console.log("FORGOT_PASSWORD_REDIRECT", redirectTo, Linking.parse(redirectTo));
     }
 
     setLoading(true);
@@ -42,20 +44,17 @@ export default function ForgotPasswordScreen() {
     });
 
     if (__DEV__) {
-      console.log("resetPasswordForEmail result", { error });
+      console.log("FORGOT_PASSWORD_RESULT", { error });
     }
 
     setLoading(false);
 
-    if (error && __DEV__) {
-      console.log("resetPasswordForEmail error", error.message);
+    if (error) {
+      Alert.alert("Error", error.message);
+      return;
     }
 
-    Alert.alert(
-      "Check your email",
-      "If this email is registered, you’ll receive a reset link."
-    );
-
+    Alert.alert("Check email for reset link.");
     setEmail("");
   };
 
@@ -86,6 +85,15 @@ export default function ForgotPasswordScreen() {
             {loading ? "Sending..." : "Send Reset Link"}
           </Text>
         </TouchableOpacity>
+
+        {__DEV__ ? (
+          <TouchableOpacity
+            style={styles.devLinkButton}
+            onPress={() => router.push("/reset-password")}
+          >
+            <Text style={styles.devLinkButtonText}>Open reset page (dev)</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
     </KeyboardAvoidingView>
   );
@@ -128,5 +136,14 @@ const styles = StyleSheet.create({
     color: "white",
     fontWeight: "600",
     fontSize: 16,
+  },
+  devLinkButton: {
+    marginTop: 12,
+    alignItems: "center",
+    paddingVertical: 6,
+  },
+  devLinkButtonText: {
+    color: "#1d4ed8",
+    fontWeight: "600",
   },
 });

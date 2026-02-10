@@ -22,7 +22,6 @@ export type RegisterResult =
   | { ok: true; alreadyRegistered?: boolean }
   | { ok: false; message: string; code?: string };
 
-
 const registrationCacheKey = (eventId: string, userId: string) =>
   `event_registration:${userId}:${eventId}`;
 
@@ -34,14 +33,18 @@ const resolveAuthUserId = async (): Promise<string | null> => {
   return user?.id ?? null;
 };
 
-export const markEventRegisteredLocal = async (eventId: string): Promise<void> => {
+export const markEventRegisteredLocal = async (
+  eventId: string
+): Promise<void> => {
   const userId = await resolveAuthUserId();
   if (!userId) return;
 
   await AsyncStorage.setItem(registrationCacheKey(eventId, userId), "1");
 };
 
-export const isEventRegisteredLocally = async (eventId: string): Promise<boolean> => {
+export const isEventRegisteredLocally = async (
+  eventId: string
+): Promise<boolean> => {
   const userId = await resolveAuthUserId();
   if (!userId) return false;
 
