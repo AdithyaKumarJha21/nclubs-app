@@ -9,7 +9,11 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { EventRegistration, registerForEvent } from "../services/registrations";
+import {
+  EventRegistration,
+  getMyRegistration,
+  registerForEvent,
+} from "../services/registrations";
 import { supabase } from "../services/supabase";
 import { useTheme } from "../theme/ThemeContext";
 
@@ -35,13 +39,32 @@ export default function EventRegistrationModal({
   const [email, setEmail] = useState("");
   const [usn, setUsn] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCheckingRegistration, setIsCheckingRegistration] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
 
-    const loadEmail = async () => {
-      if (initialEmail && !email) {
+    let isMounted = true;
+
+    const loadRegistrationState = async () => {
+      setIsCheckingRegistration(true);
+
+      const existingRegistration = await getMyRegistration(eventId);
+      if (!isMounted) {
+        return;
+      }
+
+      if (existingRegistration) {
+        Alert.alert("Already registered", "You are already registered");
+        onSuccess(existingRegistration);
+        onClose();
+        setIsCheckingRegistration(false);
+        return;
+      }
+
+      if (initialEmail) {
         setEmail(initialEmail);
+        setIsCheckingRegistration(false);
         return;
       }
 
@@ -49,16 +72,27 @@ export default function EventRegistrationModal({
         data: { user },
       } = await supabase.auth.getUser();
 
-      if (user?.email && !email) {
+      if (user?.email) {
         setEmail(user.email);
       }
+
+      setIsCheckingRegistration(false);
     };
 
-    loadEmail();
-  }, [visible, initialEmail, email]);
+    loadRegistrationState().catch((error) => {
+      console.error("Failed to load registration state", error);
+      if (isMounted) {
+        setIsCheckingRegistration(false);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [visible, eventId, initialEmail, onClose, onSuccess]);
 
   const handleRegister = async () => {
-    if (isSubmitting) {
+    if (isSubmitting || isCheckingRegistration) {
       return;
     }
 
@@ -153,7 +187,7 @@ export default function EventRegistrationModal({
               value={email}
               onChangeText={setEmail}
               keyboardType="email-address"
-              editable={!isSubmitting}
+              editable={!isSubmitting && !isCheckingRegistration}
               style={[
                 styles.input,
                 {
@@ -175,7 +209,7 @@ export default function EventRegistrationModal({
               placeholderTextColor={isDark ? "#666" : "#ccc"}
               value={usn}
               onChangeText={(value) => setUsn(value.toUpperCase())}
-              editable={!isSubmitting}
+              editable={!isSubmitting && !isCheckingRegistration}
               style={[
                 styles.input,
                 {
@@ -190,20 +224,30 @@ export default function EventRegistrationModal({
           {/* Buttons */}
           <View style={styles.buttonContainer}>
             <TouchableOpacity
-              style={[styles.cancelButton, { opacity: isSubmitting ? 0.6 : 1 }]}
+              style={[
+                styles.cancelButton,
+                { opacity: isSubmitting || isCheckingRegistration ? 0.6 : 1 },
+              ]}
               onPress={onClose}
-              disabled={isSubmitting}
+              disabled={isSubmitting || isCheckingRegistration}
             >
               <Text style={styles.cancelButtonText}>Cancel</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.registerButton, { opacity: isSubmitting ? 0.6 : 1 }]}
+              style={[
+                styles.registerButton,
+                { opacity: isSubmitting || isCheckingRegistration ? 0.6 : 1 },
+              ]}
               onPress={handleRegister}
-              disabled={isSubmitting}
+              disabled={isSubmitting || isCheckingRegistration}
             >
               <Text style={styles.registerButtonText}>
-                {isSubmitting ? "Registering..." : "Register"}
+                {isCheckingRegistration
+                  ? "Checking..."
+                  : isSubmitting
+                    ? "Registering..."
+                    : "Register"}
               </Text>
             </TouchableOpacity>
           </View>
