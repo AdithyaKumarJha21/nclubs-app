@@ -1,13 +1,14 @@
+import * as Linking from "expo-linking";
 import { useState } from "react";
 import {
-    Alert,
-    KeyboardAvoidingView,
-    Platform,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { supabase } from "../services/supabase";
 
@@ -15,9 +16,7 @@ export default function ForgotPasswordScreen() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const isValidEmail = (value: string) => {
-    return /\S+@\S+\.\S+/.test(value);
-  };
+  const isValidEmail = (value: string) => /\S+@\S+\.\S+/.test(value);
 
   const handleResetPassword = async () => {
     if (!email.trim()) {
@@ -30,19 +29,24 @@ export default function ForgotPasswordScreen() {
       return;
     }
 
+    const redirectTo = Linking.createURL("/reset-password");
+
+    if (__DEV__) {
+      console.log("redirectTo", redirectTo);
+    }
+
     setLoading(true);
 
-    const { error } = await supabase.auth.resetPasswordForEmail(
-      email.trim(),
-      {
-        // 🔑 IMPORTANT: where user goes after clicking email link
-        redirectTo: "nclubs://reset-password",
-      }
-    );
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo,
+    });
+
+    if (__DEV__) {
+      console.log("resetPasswordForEmail result", { error });
+    }
 
     setLoading(false);
 
-    // Supabase hides user existence for security
     if (error) {
       Alert.alert("Error", error.message);
       return;
@@ -50,7 +54,7 @@ export default function ForgotPasswordScreen() {
 
     Alert.alert(
       "Check your email",
-      "If an account exists, a password reset link has been sent."
+      "If this email is registered, you’ll receive a reset link."
     );
 
     setEmail("");
@@ -71,6 +75,7 @@ export default function ForgotPasswordScreen() {
           onChangeText={setEmail}
           autoCapitalize="none"
           keyboardType="email-address"
+          autoCorrect={false}
         />
 
         <TouchableOpacity
