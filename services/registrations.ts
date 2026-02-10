@@ -91,17 +91,9 @@ export const registerForEvent = async (
         userId: user.id,
       });
 
-      return {
-        registration: {
-          id: "",
-          event_id: eventId,
-          user_id: user.id,
-          email: trimmedEmail,
-          usn: trimmedUsn,
-          registered_at: new Date().toISOString(),
-        },
-        alreadyRegistered: true,
-      };
+      throw new Error(
+        "Registration conflict detected. Please refresh and try again."
+      );
     }
 
     throw new Error(normalizeSupabaseError(error));
@@ -109,3 +101,4 @@ export const registerForEvent = async (
 
   return { registration: data, alreadyRegistered: false };
 };
+
