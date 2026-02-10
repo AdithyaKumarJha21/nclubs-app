@@ -122,21 +122,23 @@ export default function SignupScreen() {
       return;
     }
 
-    const user = data.user;
-    if (!user) {
+    if (!data?.user) {
       Alert.alert("Error", "User not created.");
       setLoading(false);
       return;
     }
 
-    // 2) INSERT PROFILE
-    const { error: profileError } = await supabase.from("profiles").insert({
-      id: user.id,
-      name,
-      usn,
-      email: email.trim(),
-      // role_id handled by backend (default student)
-    });
+    // 2) UPDATE EXISTING PROFILE (created by backend trigger)
+    const { error: profileError } = await supabase
+      .from("profiles")
+      .update({
+        name,
+        usn,
+        email: email.trim(),
+      })
+      .eq("id", data.user.id);
+
+    console.log("Profile update result", { userId: data.user.id });
 
     if (profileError) {
       Alert.alert("Signup failed", profileError.message);
