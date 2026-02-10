@@ -91,6 +91,10 @@ export default function FacultyLoginScreen() {
     router.push("/login");
   };
 
+  const handleForgotPasswordPress = () => {
+    router.push("/forgot-password");
+  };
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -136,6 +140,10 @@ export default function FacultyLoginScreen() {
             </TouchableOpacity>
           </View>
         </View>
+
+        <TouchableOpacity onPress={handleForgotPasswordPress}>
+          <Text style={styles.registerLink}>Forgot Password?</Text>
+        </TouchableOpacity>
 
         {errorMessage && <Text style={styles.error}>{errorMessage}</Text>}
 
@@ -219,6 +227,11 @@ const styles = StyleSheet.create({
     color: "white",
     fontWeight: "600",
     fontSize: 16,
+  },
+  registerLink: {
+    marginTop: 8,
+    color: "#2563eb",
+    textAlign: "center",
   },
   backLink: {
     marginTop: 12,
