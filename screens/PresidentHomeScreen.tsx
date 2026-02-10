@@ -2,29 +2,18 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-    Alert,
-    ActivityIndicator,
-    FlatList,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { supabase } from "../services/supabase";
 
-import ClubCard from "../components/ClubCard";
-import ClubSearchBar from "../components/ClubSearchBar";
-import ClubSearchEmptyState from "../components/ClubSearchEmptyState";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../theme/ThemeContext";
-
-type Club = {
-  id: string;
-  name: string;
-  logo_url: string | null;
-  description: string | null;
-};
 
 const TRANSFER_CONFIRMATION_PHRASE = "TRANSFER PRESIDENT";
 
@@ -36,9 +25,6 @@ export default function PresidentHomeScreen() {
   const { theme, isDark, setIsDark } = useTheme();
   const { user, loading } = useAuth();
   const [showMenu, setShowMenu] = useState(false);
-  const [clubs, setClubs] = useState<Club[]>([]);
-  const [clubsLoading, setClubsLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
   const [clubId, setClubId] = useState<string | null>(null);
   const [clubIdLoading, setClubIdLoading] = useState(true);
   const [transferEmail, setTransferEmail] = useState("");
@@ -46,9 +32,6 @@ export default function PresidentHomeScreen() {
   const [isTransferring, setIsTransferring] = useState(false);
   const [showTransferSection, setShowTransferSection] = useState(false);
 
-  /* ===============================
-     ROUTE PROTECTION (SAFE)
-     =============================== */
   useEffect(() => {
     if (loading) return;
 
@@ -84,27 +67,6 @@ export default function PresidentHomeScreen() {
     loadPresidentClubId();
   }, [user?.id, user?.role]);
 
-  useEffect(() => {
-    const loadClubs = async () => {
-      const { data, error } = await supabase
-        .from("clubs")
-        .select("id, name, logo_url, description")
-        .order("name");
-
-      if (error) {
-        console.error(error);
-        setClubs([]);
-        setClubsLoading(false);
-        return;
-      }
-
-      setClubs(data ?? []);
-      setClubsLoading(false);
-    };
-
-    loadClubs();
-  }, []);
-
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.replace("/login");
@@ -123,7 +85,7 @@ export default function PresidentHomeScreen() {
       ? "Confirmation phrase is required."
       : confirmText === TRANSFER_CONFIRMATION_PHRASE
       ? null
-      : `Type \"${TRANSFER_CONFIRMATION_PHRASE}\" exactly to continue.`;
+      : `Type "${TRANSFER_CONFIRMATION_PHRASE}" exactly to continue.`;
 
   const isTransferDisabled =
     Boolean(emailError) ||
@@ -160,34 +122,12 @@ export default function PresidentHomeScreen() {
     setIsTransferring(false);
   };
 
-  /* ===============================
-     RENDER GUARD (NO NAVIGATION)
-     =============================== */
   if (loading || !user || user.role !== "president") {
     return null;
   }
 
-  if (clubsLoading) {
-    return null;
-  }
-
-  const trimmedQuery = searchQuery.trim();
-  const normalizedQuery = trimmedQuery.toLowerCase();
-  const filteredClubs = normalizedQuery
-    ? clubs.filter((club) => {
-        const nameMatch = club.name.toLowerCase().includes(normalizedQuery);
-        const descriptionMatch = club.description
-          ? club.description.toLowerCase().includes(normalizedQuery)
-          : false;
-        return nameMatch || descriptionMatch;
-      })
-    : clubs;
-
-  const showEmptyState = normalizedQuery.length > 0 && filteredClubs.length === 0;
-
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      {/* Header with Notifications and Settings */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.push("/notifications")}>
           <Ionicons
@@ -205,7 +145,6 @@ export default function PresidentHomeScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Settings Dropdown Menu */}
       {showMenu && (
         <View
           style={[
@@ -221,9 +160,7 @@ export default function PresidentHomeScreen() {
             }}
           >
             <Ionicons name="person-outline" size={18} color={theme.text} />
-            <Text style={[styles.menuText, { color: theme.text }]}>
-              Edit Profile
-            </Text>
+            <Text style={[styles.menuText, { color: theme.text }]}>Edit Profile</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -234,9 +171,7 @@ export default function PresidentHomeScreen() {
             }}
           >
             <Ionicons name="lock-closed-outline" size={18} color={theme.text} />
-            <Text style={[styles.menuText, { color: theme.text }]}>
-              Change Password
-            </Text>
+            <Text style={[styles.menuText, { color: theme.text }]}>Change Password</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -247,9 +182,7 @@ export default function PresidentHomeScreen() {
             }}
           >
             <Ionicons name="calendar-outline" size={18} color={theme.text} />
-            <Text style={[styles.menuText, { color: theme.text }]}>
-              Calendar
-            </Text>
+            <Text style={[styles.menuText, { color: theme.text }]}>Calendar</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -281,126 +214,89 @@ export default function PresidentHomeScreen() {
         </View>
       )}
 
-      <Text style={[styles.title, { color: theme.text }]}>
-        President Dashboard
-      </Text>
+      <Text style={[styles.title, { color: theme.text }]}>President Dashboard</Text>
+      <Text style={[styles.subtitle, { color: theme.text }]}>Quick actions</Text>
 
-      <View style={styles.searchWrapper}>
-        <ClubSearchBar
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          onClear={() => setSearchQuery("")}
-        />
-      </View>
+      <View style={styles.actions}>
+        <TouchableOpacity
+          style={[styles.button, styles.primaryButton]}
+          onPress={() => router.push("/clubs")}
+        >
+          <Text style={styles.buttonText}>Manage Clubs</Text>
+        </TouchableOpacity>
 
-      <FlatList
-        data={filteredClubs}
-        keyExtractor={(item) => item.id}
-        numColumns={3}
-        contentContainerStyle={styles.list}
-        ListFooterComponent={
-          <View style={styles.actions}>
-            <TouchableOpacity
-              style={styles.button}
-              onPress={() => router.push("/clubs")}
-            >
-              <Text style={styles.buttonText}>Manage Club</Text>
-            </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.button}
+          onPress={() => router.push("/event-management")}
+        >
+          <Text style={styles.buttonText}>Manage Events</Text>
+        </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.button}
-              onPress={() => router.push("/event-management")}
-            >
-              <Text style={styles.buttonText}>Manage Events</Text>
-            </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.button}
+          onPress={() => router.push("/attendance-history")}
+        >
+          <Text style={styles.buttonText}>Attendance History</Text>
+        </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.button}
-              onPress={() => router.push("/attendance-history")}
-            >
-              <Text style={styles.buttonText}>Attendance History</Text>
-            </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.button}
+          onPress={() => setShowTransferSection((previous) => !previous)}
+        >
+          <Text style={styles.buttonText}>
+            {showTransferSection ? "Close Change President" : "Change President"}
+          </Text>
+        </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.button}
-              onPress={() => setShowTransferSection((previous) => !previous)}
-            >
-              <Text style={styles.buttonText}>
-                {showTransferSection ? "Close Change President" : "Change President"}
-              </Text>
-            </TouchableOpacity>
+        {showTransferSection ? (
+          <View style={styles.transferSection}>
+            <Text style={[styles.transferTitle, { color: theme.text }]}>Transfer President</Text>
+            <Text style={[styles.transferHint, { color: theme.text }]}>Type the new president email and the exact confirmation phrase.</Text>
 
-            {showTransferSection ? (
-              <View style={styles.transferSection}>
-                <Text style={[styles.transferTitle, { color: theme.text }]}>Transfer President</Text>
-                <Text style={[styles.transferHint, { color: theme.text }]}>Type the new president email and the exact confirmation phrase.</Text>
-
-                <TextInput
-                  style={[styles.transferInput, { color: theme.text, borderColor: "#d1d5db" }]}
-                  placeholder="new-president@email.com"
-                  placeholderTextColor="#9ca3af"
-                  value={transferEmail}
-                  onChangeText={setTransferEmail}
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                />
-                {emailError ? <Text style={styles.inlineError}>{emailError}</Text> : null}
-
-                <TextInput
-                  style={[styles.transferInput, { color: theme.text, borderColor: "#d1d5db" }]}
-                  placeholder={TRANSFER_CONFIRMATION_PHRASE}
-                  placeholderTextColor="#9ca3af"
-                  value={confirmText}
-                  onChangeText={setConfirmText}
-                  autoCapitalize="characters"
-                />
-                {confirmError ? <Text style={styles.inlineError}>{confirmError}</Text> : null}
-
-                {clubIdLoading ? (
-                  <View style={styles.clubStatusRow}>
-                    <ActivityIndicator size="small" color="#2563eb" />
-                    <Text style={[styles.transferHint, { color: theme.text }]}>Loading club assignment...</Text>
-                  </View>
-                ) : !clubId ? (
-                  <Text style={styles.inlineError}>No club assigned.</Text>
-                ) : null}
-
-                <TouchableOpacity
-                  style={[styles.button, isTransferDisabled && styles.disabledButton]}
-                  onPress={handleTransferPresident}
-                  disabled={isTransferDisabled}
-                >
-                  {isTransferring ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={styles.buttonText}>Transfer President</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            ) : null}
-          </View>
-        }
-        ListEmptyComponent={
-          showEmptyState ? (
-            <ClubSearchEmptyState
-              searchTerm={trimmedQuery}
-              onClear={() => setSearchQuery("")}
+            <TextInput
+              style={[styles.transferInput, { color: theme.text, borderColor: "#d1d5db" }]}
+              placeholder="new-president@email.com"
+              placeholderTextColor="#9ca3af"
+              value={transferEmail}
+              onChangeText={setTransferEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
             />
-          ) : null
-        }
-        renderItem={({ item }) => (
-          <ClubCard
-            name={item.name}
-            logo={item.logo_url ?? ""}
-            onPress={() =>
-              router.push({
-                pathname: "/club-profile",
-                params: { clubId: item.id },
-              })
-            }
-          />
-        )}
-      />
+            {emailError ? <Text style={styles.inlineError}>{emailError}</Text> : null}
+
+            <TextInput
+              style={[styles.transferInput, { color: theme.text, borderColor: "#d1d5db" }]}
+              placeholder={TRANSFER_CONFIRMATION_PHRASE}
+              placeholderTextColor="#9ca3af"
+              value={confirmText}
+              onChangeText={setConfirmText}
+              autoCapitalize="characters"
+            />
+            {confirmError ? <Text style={styles.inlineError}>{confirmError}</Text> : null}
+
+            {clubIdLoading ? (
+              <View style={styles.clubStatusRow}>
+                <ActivityIndicator size="small" color="#2563eb" />
+                <Text style={[styles.transferHint, { color: theme.text }]}>Loading club assignment...</Text>
+              </View>
+            ) : !clubId ? (
+              <Text style={styles.inlineError}>No club assigned.</Text>
+            ) : null}
+
+            <TouchableOpacity
+              style={[styles.button, isTransferDisabled && styles.disabledButton]}
+              onPress={handleTransferPresident}
+              disabled={isTransferDisabled}
+            >
+              {isTransferring ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.buttonText}>Transfer President</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -451,16 +347,16 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 22,
     fontWeight: "700",
-    marginBottom: 12,
+    marginBottom: 8,
   },
-  searchWrapper: {
+  subtitle: {
+    fontSize: 14,
+    opacity: 0.75,
     marginBottom: 16,
-  },
-  list: {
-    paddingBottom: 16,
   },
   actions: {
     paddingTop: 8,
+    paddingBottom: 16,
   },
   button: {
     backgroundColor: "#2563eb",
@@ -469,6 +365,9 @@ const styles = StyleSheet.create({
     width: "100%",
     marginBottom: 12,
     alignItems: "center",
+  },
+  primaryButton: {
+    backgroundColor: "#1d4ed8",
   },
   buttonText: {
     color: "white",
