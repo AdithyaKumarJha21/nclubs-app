@@ -3,7 +3,6 @@ import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
@@ -85,9 +84,8 @@ export default function LoginScreen() {
     // 3) ROLE-BASED REDIRECT / BLOCK
     if (role === "faculty" || role === "admin") {
       await supabase.auth.signOut();
-      Alert.alert(
-        "Wrong login",
-        "Faculty/Admin can't login here. Please use the Faculty Login."
+      setErrorMessage(
+        "Faculty must use Faculty Login. Please use 'Login as Faculty' option below."
       );
       setIsSubmitting(false);
       return;
@@ -160,7 +158,9 @@ export default function LoginScreen() {
           </View>
         </View>
 
-        {errorMessage && <Text style={styles.error}>{errorMessage}</Text>}
+        <TouchableOpacity onPress={handleForgotPasswordPress}>
+          <Text style={styles.registerLink}>Forgot Password?</Text>
+        </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.loginButton}
@@ -174,9 +174,7 @@ export default function LoginScreen() {
           )}
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={handleForgotPasswordPress}>
-          <Text style={styles.forgot}>Forgot Password?</Text>
-        </TouchableOpacity>
+        {errorMessage && <Text style={styles.error}>{errorMessage}</Text>}
 
         <TouchableOpacity onPress={handleRegisterPress}>
           <Text style={styles.registerLink}>New user? Register</Text>
@@ -251,11 +249,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     fontSize: 16,
   },
-  forgot: {
-    marginTop: 10,
-    color: "#2563eb",
-    textAlign: "center",
-  },
   registerLink: {
     marginTop: 8,
     color: "#2563eb",
@@ -269,6 +262,6 @@ const styles = StyleSheet.create({
   error: {
     color: "red",
     fontSize: 13,
-    marginBottom: 8,
+    marginTop: 8,
   },
 });
