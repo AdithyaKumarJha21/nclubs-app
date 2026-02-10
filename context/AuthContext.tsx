@@ -30,6 +30,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const clearInvalidSession = async () => {
+    await supabase.auth.signOut({ scope: "local" });
+    setUser(null);
+  };
+
+  const isInvalidRefreshTokenError = (error: unknown) => {
+    if (!(error instanceof Error)) {
+      return false;
+    }
+
+    const normalizedMessage = error.message.toLowerCase();
+    return (
+      normalizedMessage.includes("invalid refresh token") ||
+      normalizedMessage.includes("refresh token not found")
+    );
+  };
+
   const loadSession = async () => {
     setLoading(true);
 
@@ -87,6 +104,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       setLoading(false);
     } catch (err) {
+      if (isInvalidRefreshTokenError(err)) {
+        console.warn("Session refresh token is invalid. Clearing local session.");
+        await clearInvalidSession();
+        setLoading(false);
+        return;
+      }
+
       console.error("Unexpected auth error:", err);
       setUser(null);
       setLoading(false);
