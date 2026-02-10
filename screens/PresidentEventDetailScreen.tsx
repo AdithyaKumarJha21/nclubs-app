@@ -10,13 +10,13 @@ import {
   View,
 } from "react-native";
 import QRCode from "react-native-qrcode-svg";
-import { useAuth } from "../context/AuthContext";
 import {
-  EventRow,
+  EventDetail,
   disableEventQr,
   generateEventQr,
   getEventById,
 } from "../services/events";
+import { canManageClub } from "../services/permissions";
 import { useTheme } from "../theme/ThemeContext";
 import { formatTimeLocal } from "../utils/timeWindow";
 import { buildQrPayload } from "../utils/qr";
@@ -24,15 +24,13 @@ import { buildQrPayload } from "../utils/qr";
 export default function PresidentEventDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
-  const { user } = useAuth();
   const { isDark } = useTheme();
 
-  const [event, setEvent] = useState<EventRow | null>(null);
+  const [event, setEvent] = useState<EventDetail | null>(null);
+  const [isManager, setIsManager] = useState(false);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [disabling, setDisabling] = useState(false);
-
-  const isOwner = !!event && !!user && event.created_by === user.id;
 
   useEffect(() => {
     if (!id) return;
@@ -42,9 +40,13 @@ export default function PresidentEventDetailScreen() {
         setLoading(true);
         const data = await getEventById(id);
         setEvent(data);
+
+        const canManage = data.club_id ? await canManageClub(data.club_id) : false;
+        setIsManager(canManage);
+
         console.log("📌 President event detail", {
           eventId: id,
-          isOwner: user?.id === data.created_by,
+          isManager: canManage,
           qr_enabled: data.qr_enabled,
           hasToken: !!data.qr_token,
           tokenLength: data.qr_token?.length ?? 0,
@@ -58,7 +60,7 @@ export default function PresidentEventDetailScreen() {
     };
 
     loadEvent();
-  }, [id, user?.id]);
+  }, [id]);
 
   const qrValue = useMemo(() => {
     if (!event?.qr_token) return null;
@@ -79,12 +81,12 @@ export default function PresidentEventDetailScreen() {
   };
 
   const handleGenerateQr = async () => {
-    if (!event || !isOwner || event.qr_token) return;
+    if (!event || !isManager || event.qr_token) return;
 
     try {
       setGenerating(true);
       const updated = await generateEventQr(event.id);
-      setEvent(updated);
+      setEvent((current) => (current ? { ...current, ...updated } : current));
       Alert.alert("Success", "QR generated");
       console.log("✅ QR generated", {
         eventId: event.id,
@@ -98,12 +100,12 @@ export default function PresidentEventDetailScreen() {
   };
 
   const handleDisableQr = async () => {
-    if (!event || !isOwner || !event.qr_enabled) return;
+    if (!event || !isManager || !event.qr_enabled) return;
 
     try {
       setDisabling(true);
       const updated = await disableEventQr(event.id);
-      setEvent(updated);
+      setEvent((current) => (current ? { ...current, ...updated } : current));
       Alert.alert("Success", "QR disabled");
       console.log("✅ QR disabled", {
         eventId: event.id,
@@ -186,7 +188,7 @@ export default function PresidentEventDetailScreen() {
         </View>
       ) : null}
 
-      {isOwner ? (
+      {isManager ? (
         <View style={styles.qrSection}>
           <Text style={[styles.sectionTitle, { color: isDark ? "#fff" : "#000" }]}>
             QR Attendance
@@ -246,7 +248,7 @@ export default function PresidentEventDetailScreen() {
         </View>
       ) : (
         <Text style={[styles.qrCaption, { color: isDark ? "#aaa" : "#666" }]}>
-          You can only manage QR for events you created.
+          Not authorized to manage this club event.
         </Text>
       )}
     </ScrollView>

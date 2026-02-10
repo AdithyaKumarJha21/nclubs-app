@@ -5,6 +5,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -16,10 +17,9 @@ import UploadFileSection from "../components/UploadFileSection";
 
 import { useAuth } from "../context/AuthContext";
 import { useEditMode } from "../hooks/useEditMode";
+import { canManageClub } from "../services/permissions";
 import { supabase } from "../services/supabase";
 import { useTheme } from "../theme/ThemeContext";
-
-import { canEditClub } from "../utils/permissions";
 
 export default function ClubProfileScreen() {
   const { theme } = useTheme();
@@ -36,8 +36,13 @@ export default function ClubProfileScreen() {
 
   const { isEditing, startEdit, cancelEdit } = useEditMode();
 
-  const [isAssigned, setIsAssigned] = useState(false);
+  const [isManager, setIsManager] = useState(false);
+  const [isCheckingPermission, setIsCheckingPermission] = useState(true);
   const [isLoadingClub, setIsLoadingClub] = useState(true);
+
+  const [clubName, setClubName] = useState("");
+  const [clubDescription, setClubDescription] = useState("");
+  const [clubLogoUrl, setClubLogoUrl] = useState("");
 
   const [about, setAbout] = useState("");
   const [whatToExpect, setWhatToExpect] = useState("");
@@ -50,26 +55,43 @@ export default function ClubProfileScreen() {
     if (!normalizedClubId) return;
 
     const loadClub = async () => {
-      const { data, error } = await supabase
-        .from("club_sections")
-        .select("*")
-        .eq("club_id", normalizedClubId)
-        .order("order_index");
+      const [{ data: clubData, error: clubError }, { data: sectionData, error: sectionError }] = await Promise.all([
+        supabase
+          .from("clubs")
+          .select("name, description, logo_url")
+          .eq("id", normalizedClubId)
+          .maybeSingle(),
+        supabase
+          .from("club_sections")
+          .select("*")
+          .eq("club_id", normalizedClubId)
+          .order("order_index"),
+      ]);
 
-      if (error) {
-        Alert.alert("Error", error.message);
+      if (clubError) {
+        Alert.alert("Error", clubError.message);
         setIsLoadingClub(false);
         return;
       }
 
+      if (sectionError) {
+        Alert.alert("Error", sectionError.message);
+        setIsLoadingClub(false);
+        return;
+      }
+
+      setClubName(clubData?.name ?? "");
+      setClubDescription(clubData?.description ?? "");
+      setClubLogoUrl(clubData?.logo_url ?? "");
+
       setAbout(
-        data?.find((s) => s.title === "About Us")?.content ?? ""
+        sectionData?.find((s) => s.title === "About Us")?.content ?? ""
       );
       setWhatToExpect(
-        data?.find((s) => s.title === "What to Expect")?.content ?? ""
+        sectionData?.find((s) => s.title === "What to Expect")?.content ?? ""
       );
       setAchievements(
-        data?.find((s) => s.title === "Achievements")?.content ?? ""
+        sectionData?.find((s) => s.title === "Achievements")?.content ?? ""
       );
 
       setIsLoadingClub(false);
@@ -78,50 +100,50 @@ export default function ClubProfileScreen() {
     loadClub();
   }, [normalizedClubId]);
 
-  /* ===============================
-     2️⃣ CHECK FACULTY / PRESIDENT ASSIGNMENT
-     =============================== */
   useEffect(() => {
-    if (!user || !normalizedClubId) return;
-
-    if (user.role === "admin") {
-      setIsAssigned(true);
+    if (!user || !normalizedClubId) {
+      setIsCheckingPermission(false);
+      setIsManager(false);
       return;
     }
 
-    if (user.role !== "faculty" && user.role !== "president") {
-      setIsAssigned(false);
-      return;
-    }
-
-    const checkAssignment = async () => {
-      const { data, error } = await supabase
-        .from("faculty_assignments")
-        .select("id")
-        .eq("faculty_id", user.id)
-        .eq("club_id", normalizedClubId)
-        .limit(1);
-
-      setIsAssigned(!error && (data?.length ?? 0) > 0);
+    const loadPermission = async () => {
+      setIsCheckingPermission(true);
+      const canManage = await canManageClub(normalizedClubId);
+      setIsManager(canManage);
+      setIsCheckingPermission(false);
     };
 
-    checkAssignment();
+    loadPermission();
   }, [user, normalizedClubId]);
 
-  if (loading || isLoadingClub) return null;
+  if (loading || isLoadingClub || isCheckingPermission) return null;
 
-  /* ===============================
-     3️⃣ PERMISSIONS
-     =============================== */
-  const canEdit = canEditClub(user, isAssigned);
-
-  /* ===============================
-     4️⃣ SAVE CONTENT
-     =============================== */
   const handleSaveEdit = async () => {
-    if (!canEdit || !normalizedClubId) return;
+    if (!isManager || !normalizedClubId) {
+      Alert.alert("Not authorized", "Not authorized to edit this club.");
+      return;
+    }
 
-    const { error } = await supabase.from("club_sections").upsert(
+    const { error: clubError } = await supabase
+      .from("clubs")
+      .update({
+        name: clubName,
+        description: clubDescription,
+        logo_url: clubLogoUrl || null,
+      })
+      .eq("id", normalizedClubId);
+
+    if (clubError) {
+      if (clubError.code === "42501") {
+        Alert.alert("Not authorized", "Not authorized to edit this club.");
+      } else {
+        Alert.alert("Error", clubError.message);
+      }
+      return;
+    }
+
+    const { error: sectionError } = await supabase.from("club_sections").upsert(
       [
         { club_id: normalizedClubId, title: "About Us", content: about, order_index: 1 },
         { club_id: normalizedClubId, title: "What to Expect", content: whatToExpect, order_index: 2 },
@@ -130,8 +152,12 @@ export default function ClubProfileScreen() {
       { onConflict: "club_id,title" }
     );
 
-    if (error) {
-      Alert.alert("Error", error.message);
+    if (sectionError) {
+      if (sectionError.code === "42501") {
+        Alert.alert("Not authorized", "Not authorized to edit this club.");
+      } else {
+        Alert.alert("Error", sectionError.message);
+      }
       return;
     }
 
@@ -140,11 +166,46 @@ export default function ClubProfileScreen() {
 
   return (
     <ScrollView style={[styles.container, { backgroundColor: theme.background }]}>
-      <Text style={[styles.clubName, { color: theme.text }]}>
+      <Text style={[styles.clubName, { color: theme.text }]}> 
         Club Profile
       </Text>
 
-      {canEdit &&
+      {isManager ? (
+        <TextInput
+          style={[styles.input, { color: theme.text, borderColor: "#9ca3af" }]}
+          value={clubName}
+          editable={isEditing}
+          onChangeText={setClubName}
+          placeholder="Club name"
+          placeholderTextColor="#6b7280"
+        />
+      ) : (
+        <Text style={[styles.readOnlyValue, { color: theme.text }]}>{clubName}</Text>
+      )}
+
+      <Text style={[styles.fieldLabel, { color: theme.text }]}>Description</Text>
+      <TextInput
+        style={[styles.input, styles.multiInput, { color: theme.text, borderColor: "#9ca3af" }]}
+        value={clubDescription}
+        editable={isEditing && isManager}
+        onChangeText={setClubDescription}
+        multiline
+        placeholder="Club description"
+        placeholderTextColor="#6b7280"
+      />
+
+      <Text style={[styles.fieldLabel, { color: theme.text }]}>Logo URL</Text>
+      <TextInput
+        style={[styles.input, { color: theme.text, borderColor: "#9ca3af" }]}
+        value={clubLogoUrl}
+        editable={isEditing && isManager}
+        onChangeText={setClubLogoUrl}
+        autoCapitalize="none"
+        placeholder="https://..."
+        placeholderTextColor="#6b7280"
+      />
+
+      {isManager &&
         (isEditing ? (
           <View style={{ flexDirection: "row", gap: 16, marginBottom: 20 }}>
             <TouchableOpacity onPress={handleSaveEdit}>
@@ -160,16 +221,20 @@ export default function ClubProfileScreen() {
           </TouchableOpacity>
         ))}
 
-      <EditableTextSection title="About Us" value={about} isEditing={isEditing && canEdit} onChange={setAbout} />
-      <EditableTextSection title="What to Expect" value={whatToExpect} isEditing={isEditing && canEdit} onChange={setWhatToExpect} />
-      <EditableTextSection title="Achievements" value={achievements} isEditing={isEditing && canEdit} onChange={setAchievements} />
+      {!isManager && (
+        <Text style={[styles.unauthorizedText, { color: theme.text }]}>Not authorized to edit this club.</Text>
+      )}
+
+      <EditableTextSection title="About Us" value={about} isEditing={isEditing && isManager} onChange={setAbout} />
+      <EditableTextSection title="What to Expect" value={whatToExpect} isEditing={isEditing && isManager} onChange={setWhatToExpect} />
+      <EditableTextSection title="Achievements" value={achievements} isEditing={isEditing && isManager} onChange={setAchievements} />
 
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: theme.text }]}>Gallery</Text>
         <ClubGallery />
       </View>
 
-      {canEdit && (
+      {isManager && (
         <>
           <UploadedFilesList />
           <UploadFileSection />
@@ -182,6 +247,23 @@ export default function ClubProfileScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16 },
   clubName: { fontSize: 28, fontWeight: "bold", marginBottom: 20 },
+  fieldLabel: { fontSize: 14, fontWeight: "600", marginBottom: 6 },
+  readOnlyValue: { fontSize: 18, fontWeight: "600", marginBottom: 16 },
+  input: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 16,
+  },
+  multiInput: {
+    minHeight: 90,
+    textAlignVertical: "top",
+  },
+  unauthorizedText: {
+    marginBottom: 12,
+    fontSize: 13,
+  },
   section: { marginBottom: 24 },
   sectionTitle: { fontSize: 20, fontWeight: "600", marginBottom: 8 },
 });
