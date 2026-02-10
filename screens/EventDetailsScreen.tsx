@@ -12,7 +12,11 @@ import {
 import EventRegistrationModal from "../components/EventRegistrationModal";
 import { useAuth } from "../context/AuthContext";
 import { EventDetail, getEventById } from "../services/events";
-import { EventRegistration, getMyRegistration } from "../services/registrations";
+import {
+  EventRegistration,
+  getMyRegistration,
+  isEventRegisteredLocally,
+} from "../services/registrations";
 import { useTheme } from "../theme/ThemeContext";
 import {
   formatTimeLocal,
@@ -49,14 +53,29 @@ export default function EventDetailsScreen() {
     const loadDetails = async () => {
       try {
         setLoading(true);
-        const [eventData, registrationData] = await Promise.all([
+        const [eventData, registrationData, cachedRegistration] = await Promise.all([
           getEventById(resolvedEventId),
           getMyRegistration(resolvedEventId),
+          isEventRegisteredLocally(resolvedEventId),
         ]);
 
         if (!isMounted) return;
+
+        const resolvedRegistration =
+          registrationData ??
+          (cachedRegistration
+            ? {
+                id: `cached-${resolvedEventId}-${user?.id ?? "unknown"}`,
+                event_id: resolvedEventId,
+                user_id: user?.id ?? "unknown",
+                email: user?.email ?? "",
+                usn: "",
+                registered_at: new Date().toISOString(),
+              }
+            : null);
+
         setEvent(eventData);
-        setRegistration(registrationData);
+        setRegistration(resolvedRegistration);
 
         console.log("📍 Event detail loaded", {
           userId: user?.id,
@@ -65,10 +84,11 @@ export default function EventDetailsScreen() {
           startTime: eventData.start_time,
           endTime: eventData.end_time,
           now: new Date().toISOString(),
-          isRegistered: !!registrationData,
+          isRegistered: !!resolvedRegistration,
+          hasCachedRegistration: cachedRegistration,
         });
 
-        if (!registrationData && !hasPrompted) {
+        if (!resolvedRegistration && !hasPrompted) {
           setShowRegistrationModal(true);
           setHasPrompted(true);
         }
@@ -87,7 +107,7 @@ export default function EventDetailsScreen() {
     return () => {
       isMounted = false;
     };
-  }, [resolvedEventId, user?.id, hasPrompted]);
+  }, [resolvedEventId, user?.id, user?.email, hasPrompted]);
 
   const isRegistered = !!registration;
 

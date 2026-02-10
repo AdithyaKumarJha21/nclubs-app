@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { normalizeSupabaseError } from "./api/errors";
 import { supabase } from "./supabase";
 
@@ -15,6 +16,37 @@ export type EventRegistration = {
   email: string;
   usn: string;
   registered_at: string;
+};
+
+export type RegisterResult =
+  | { ok: true; alreadyRegistered?: boolean }
+  | { ok: false; message: string; code?: string };
+
+
+const registrationCacheKey = (eventId: string, userId: string) =>
+  `event_registration:${userId}:${eventId}`;
+
+const resolveAuthUserId = async (): Promise<string | null> => {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  return user?.id ?? null;
+};
+
+export const markEventRegisteredLocal = async (eventId: string): Promise<void> => {
+  const userId = await resolveAuthUserId();
+  if (!userId) return;
+
+  await AsyncStorage.setItem(registrationCacheKey(eventId, userId), "1");
+};
+
+export const isEventRegisteredLocally = async (eventId: string): Promise<boolean> => {
+  const userId = await resolveAuthUserId();
+  if (!userId) return false;
+
+  const value = await AsyncStorage.getItem(registrationCacheKey(eventId, userId));
+  return value === "1";
 };
 
 const isDuplicateRegistrationError = (error: RegistrationDbError | null) => {
@@ -38,7 +70,7 @@ const mapRegistrationErrorMessage = (error: RegistrationDbError): string => {
   }
 
   if (code === "42501") {
-    return "Not allowed (RLS)";
+    return "Not allowed";
   }
 
   return normalizeSupabaseError(error);
@@ -64,22 +96,32 @@ export const getMyRegistration = async (
     .select("id, event_id, user_id, email, usn, registered_at")
     .eq("event_id", eventId)
     .eq("user_id", user.id)
-    .order("registered_at", { ascending: false })
-    .limit(1);
+    .maybeSingle();
+
+  console.log("📍 Registration select result", {
+    eventId,
+    userId: user.id,
+    data,
+    error,
+  });
 
   if (error) {
     console.error("❌ Registration lookup failed", { eventId, error });
     throw new Error(normalizeSupabaseError(error));
   }
 
-  return data?.[0] ?? null;
+  if (data) {
+    await markEventRegisteredLocal(eventId);
+  }
+
+  return data ?? null;
 };
 
 export const registerForEvent = async (
   eventId: string,
   usn: string,
   email: string
-): Promise<{ registration: EventRegistration | null; alreadyRegistered: boolean }> => {
+): Promise<RegisterResult> => {
   const trimmedEmail = email.trim();
   const normalizedUsn = usn.trim().toUpperCase();
 
@@ -89,18 +131,13 @@ export const registerForEvent = async (
   } = await supabase.auth.getUser();
 
   if (userError || !user) {
-    throw new Error("Not authorized.");
+    return { ok: false, message: "Not allowed", code: "401" };
   }
 
   console.log("📝 Registering for event", {
     userId: user.id,
     eventId,
   });
-
-  const existingRegistration = await getMyRegistration(eventId);
-  if (existingRegistration) {
-    return { registration: existingRegistration, alreadyRegistered: true };
-  }
 
   const payload = {
     event_id: eventId,
@@ -116,22 +153,21 @@ export const registerForEvent = async (
 
   if (insertError) {
     if (isDuplicateRegistrationError(insertError)) {
-      const existing = await getMyRegistration(eventId);
-      if (existing) {
-        return { registration: existing, alreadyRegistered: true };
-      }
-
-      throw new Error("You are already registered");
+      await markEventRegisteredLocal(eventId);
+      return { ok: true, alreadyRegistered: true };
     }
 
-    throw new Error(mapRegistrationErrorMessage(insertError));
+    if (insertError.code === "42501") {
+      return { ok: false, message: "Not allowed", code: insertError.code };
+    }
+
+    return {
+      ok: false,
+      message: mapRegistrationErrorMessage(insertError),
+      code: insertError.code,
+    };
   }
 
-  const registration = await getMyRegistration(eventId);
-
-  if (!registration) {
-    throw new Error("Registration failed");
-  }
-
-  return { registration, alreadyRegistered: false };
+  await markEventRegisteredLocal(eventId);
+  return { ok: true };
 };
