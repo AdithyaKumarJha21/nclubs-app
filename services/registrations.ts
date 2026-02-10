@@ -10,6 +10,23 @@ export type EventRegistration = {
   registered_at: string;
 };
 
+
+const isDuplicateRegistrationError = (error: { code?: string; message?: string } | null) => {
+  if (!error) return false;
+
+  if (error.code === "23505") {
+    return true;
+  }
+
+  const normalizedMessage = error.message?.toLowerCase() ?? "";
+
+  return (
+    normalizedMessage.includes("duplicate key") ||
+    normalizedMessage.includes("unique constraint") ||
+    normalizedMessage.includes("already exists")
+  );
+};
+
 export const getMyRegistration = async (
   eventId: string
 ): Promise<EventRegistration | null> => {
@@ -30,14 +47,15 @@ export const getMyRegistration = async (
     .select("id, event_id, user_id, email, usn, registered_at")
     .eq("event_id", eventId)
     .eq("user_id", user.id)
-    .maybeSingle();
+    .order("registered_at", { ascending: false })
+    .limit(1);
 
   if (error) {
     console.error("❌ Registration lookup failed", { eventId, error });
     throw new Error(normalizeSupabaseError(error));
   }
 
-  return data ?? null;
+  return data?.[0] ?? null;
 };
 
 export const registerForEvent = async (
@@ -62,6 +80,11 @@ export const registerForEvent = async (
     eventId,
   });
 
+  const existingRegistration = await getMyRegistration(eventId);
+  if (existingRegistration) {
+    return { registration: existingRegistration, alreadyRegistered: true };
+  }
+
   const { data, error } = await supabase
     .from("event_registrations")
     .insert({
@@ -74,9 +97,28 @@ export const registerForEvent = async (
     .single();
 
   if (error) {
-    if (error.code === "23505") {
+    if (isDuplicateRegistrationError(error)) {
       const existing = await getMyRegistration(eventId);
-      return { registration: existing, alreadyRegistered: true };
+      if (existing) {
+        return { registration: existing, alreadyRegistered: true };
+      }
+
+      console.warn("⚠️ Unique conflict hit but registration row could not be fetched", {
+        eventId,
+        userId: user.id,
+      });
+
+      return {
+        registration: {
+          id: "",
+          event_id: eventId,
+          user_id: user.id,
+          email: trimmedEmail,
+          usn: trimmedUsn,
+          registered_at: new Date().toISOString(),
+        },
+        alreadyRegistered: true,
+      };
     }
 
     throw new Error(normalizeSupabaseError(error));
