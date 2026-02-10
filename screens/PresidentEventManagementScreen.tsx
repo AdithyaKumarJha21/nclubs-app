@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -13,83 +13,75 @@ import EventCreationModal, {
   EventFormData,
 } from "../components/EventCreationModal";
 import { useAuth } from "../context/AuthContext";
-import { getMyClubs } from "../services/assignments";
-import { createEvent } from "../services/events";
+import { getMyClubIdsForEvents } from "../services/assignments";
+import { createEvent, listEventsForClubIds, ManagedEventRow } from "../services/events";
 import { supabase } from "../services/supabase";
 import { useTheme } from "../theme/ThemeContext";
 
-interface Event {
-  id: string;
-  title: string;
-  event_date: string;
-  start_time: string;
-  end_time: string;
-  location: string;
-  club_id: string;
-  created_by: string;
-  qr_enabled: boolean;
-}
+type SupabaseRequestError = Error & { code?: string };
 
 export default function PresidentEventManagementScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const { isDark } = useTheme();
 
-  const [events, setEvents] = useState<Event[]>([]);
+  const [events, setEvents] = useState<ManagedEventRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [creatingEvent, setCreatingEvent] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [deletingEventId, setDeletingEventId] = useState<string>("");
   const [clubId, setClubId] = useState<string | null>(null);
   const [clubIds, setClubIds] = useState<string[]>([]);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const noClubAssigned = clubIds.length === 0;
 
-  useEffect(() => {
-    if (user) {
-      fetchClubId();
-      fetchPresidentEvents();
+  const fetchEventsForRole = useCallback(async () => {
+    if (!user || (user.role !== "faculty" && user.role !== "president" && user.role !== "admin")) {
+      return;
     }
-  }, [user]);
 
-  const fetchClubId = async () => {
-    if (!user) return;
-    try {
-      const resolvedClubIds = await getMyClubs(user);
-      console.log("FACULTY CLUB IDS:", resolvedClubIds);
-      setClubIds(resolvedClubIds);
-      setClubId(resolvedClubIds[0] ?? null);
-    } catch (error) {
-      console.error("❌ Error fetching club ID:", error);
-      setClubId(null);
-      setClubIds([]);
-    }
-  };
-
-  const fetchPresidentEvents = async () => {
-    if (!user) return;
     try {
       setLoading(true);
-      // Fetch only events created by this president
-      const nowIso = new Date().toISOString();
-      const { data, error } = await supabase
-        .from("events")
-        .select(
-          "id, title, event_date, start_time, end_time, location, club_id, created_by, qr_enabled"
-        )
-        .eq("created_by", user.id)
-        .eq("status", "active")
-        .gte("end_time", nowIso)
-        .order("event_date", { ascending: true });
+      setErrorMessage(null);
 
-      if (error) throw error;
-      setEvents(data || []);
-    } catch (error) {
+      const roleForAssignments =
+        user.role === "admin" ? "admin" : user.role === "faculty" ? "faculty" : "president";
+      const resolvedClubIds = await getMyClubIdsForEvents(roleForAssignments);
+      const fetchedEvents = await listEventsForClubIds(resolvedClubIds);
+
+      console.log({
+        role: roleForAssignments,
+        userId: user.id,
+        clubIds: resolvedClubIds,
+        eventsCount: fetchedEvents.length,
+      });
+
+      setClubIds(resolvedClubIds.includes("*") ? [] : resolvedClubIds);
+      setClubId(resolvedClubIds[0] ?? null);
+      setEvents(fetchedEvents);
+    } catch (error: unknown) {
       console.error("Error fetching events:", error);
-      Alert.alert("Error", "Failed to load events");
+      const typedError = error as SupabaseRequestError;
+
+      if (typedError.code === "42501") {
+        setErrorMessage("Not authorized to view events for this club.");
+      } else {
+        setErrorMessage("Failed to load events.");
+      }
+
+      setEvents([]);
+      setClubId(null);
+      setClubIds([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    if (user?.role === "faculty" || user?.role === "president" || user?.role === "admin") {
+      fetchEventsForRole();
+    }
+  }, [fetchEventsForRole, user?.role]);
 
   const handleCreateEvent = async (formData: EventFormData) => {
     if (!user) return;
@@ -124,11 +116,7 @@ export default function PresidentEventManagementScreen() {
 
       Alert.alert("Success", "Event created successfully!");
       setShowCreateModal(false);
-      
-      // Refresh the events list
-      setTimeout(() => {
-        fetchPresidentEvents();
-      }, 500);
+      await fetchEventsForRole();
     } catch (error: unknown) {
       console.error("❌ Error creating event:", error);
       const errorMsg = error instanceof Error ? error.message : "Unknown error";
@@ -161,27 +149,15 @@ export default function PresidentEventManagementScreen() {
     try {
       setDeletingEventId(eventId);
 
-      // Delete associated QR sessions first
-      // Delete associated event registrations
-      await supabase
-        .from("event_registrations")
-        .delete()
-        .eq("event_id", eventId);
-
-      // Delete associated attendance records
+      await supabase.from("event_registrations").delete().eq("event_id", eventId);
       await supabase.from("attendance").delete().eq("event_id", eventId);
 
-      // Delete the event
-      const { error } = await supabase
-        .from("events")
-        .delete()
-        .eq("id", eventId)
-        .eq("created_by", user?.id); // Ensure they can only delete their own events
+      const { error } = await supabase.from("events").delete().eq("id", eventId);
 
       if (error) throw error;
 
       Alert.alert("Success", "Event deleted successfully!");
-      await fetchPresidentEvents();
+      await fetchEventsForRole();
     } catch (error) {
       console.error("Error deleting event:", error);
       Alert.alert("Error", "Failed to delete event");
@@ -214,10 +190,13 @@ export default function PresidentEventManagementScreen() {
           <Text style={styles.createButtonText}>+ Add Event</Text>
         </TouchableOpacity>
       </View>
-      {!clubId && (
-        <Text style={[styles.assignmentWarning, { color: isDark ? "#f5c542" : "#8a5a00" }]}>
-          No club assigned. Contact admin.
-        </Text>
+
+      {noClubAssigned && !loading && (
+        <Text style={[styles.assignmentWarning, { color: isDark ? "#f5c542" : "#8a5a00" }]}>No club assigned. Contact admin.</Text>
+      )}
+
+      {errorMessage && !loading && (
+        <Text style={[styles.assignmentWarning, { color: isDark ? "#f87171" : "#b91c1c" }]}>{errorMessage}</Text>
       )}
 
       {loading ? (
@@ -262,7 +241,7 @@ export default function PresidentEventManagementScreen() {
                       { color: isDark ? "#aaa" : "#666" },
                     ]}
                   >
-                    {new Date(item.event_date).toLocaleDateString()} {item.start_time}
+                    {new Date(item.start_time).toLocaleDateString()} {new Date(item.start_time).toLocaleTimeString()}
                   </Text>
                   <Text
                     style={[
@@ -273,22 +252,18 @@ export default function PresidentEventManagementScreen() {
                     📍 {item.location || "TBA"}
                   </Text>
 
-                  {/* QR Status Badge */}
                   <View
                     style={[
                       styles.qrBadge,
                       {
-                        backgroundColor: item.qr_enabled ? "#4caf50" : "#999",
+                        backgroundColor: "#4caf50",
                       },
                     ]}
                   >
-                    <Text style={styles.qrBadgeText}>
-                      {item.qr_enabled ? "✓ QR Active" : "QR Inactive"}
-                    </Text>
+                    <Text style={styles.qrBadgeText}>Event Visible for Assigned Club</Text>
                   </View>
                 </View>
 
-                {/* Action Buttons */}
                 <View style={styles.buttonContainer}>
                   <TouchableOpacity
                     style={[styles.button, styles.manageButton]}
@@ -321,7 +296,6 @@ export default function PresidentEventManagementScreen() {
         />
       )}
 
-      {/* Event Creation Modal */}
       <EventCreationModal
         visible={showCreateModal}
         onClose={() => setShowCreateModal(false)}
@@ -418,15 +392,14 @@ const styles = StyleSheet.create({
   button: {
     flex: 1,
     paddingVertical: 10,
-    paddingHorizontal: 12,
     borderRadius: 6,
     alignItems: "center",
   },
   manageButton: {
-    backgroundColor: "#2563eb",
+    backgroundColor: "#0066cc",
   },
   deleteButton: {
-    backgroundColor: "#ff6b6b",
+    backgroundColor: "#d32f2f",
   },
   buttonText: {
     color: "#fff",

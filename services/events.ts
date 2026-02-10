@@ -48,6 +48,18 @@ export type EventRow = {
 
 type SupabaseRequestError = Error & { code?: string };
 
+export type ManagedEventRow = {
+  id: string;
+  club_id: string;
+  title: string;
+  description: string | null;
+  start_time: string;
+  end_time: string;
+  location: string | null;
+  status: string;
+  created_by: string;
+};
+
 const isValidDateParts = (year: number, month: number, day: number): boolean => {
   if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
     return false;
@@ -141,6 +153,28 @@ export const getEventsForStudent = async (options?: { includePast?: boolean }): 
     qr_enabled: event.qr_enabled,
     club_name: event.clubs?.name ?? null,
   })) as EventListItem[];
+};
+
+
+export const listEventsForClubIds = async (clubIds: string[]): Promise<ManagedEventRow[]> => {
+  if (clubIds.length === 0) {
+    return [];
+  }
+
+  const selectColumns =
+    "id, club_id, title, description, start_time, end_time, location, status, created_by";
+
+  const query = clubIds.includes("*")
+    ? supabase.from("events").select(selectColumns)
+    : supabase.from("events").select(selectColumns).in("club_id", clubIds);
+
+  const { data, error } = await query.order("start_time", { ascending: true });
+
+  if (error) {
+    throw buildSupabaseError(error);
+  }
+
+  return (data ?? []) as ManagedEventRow[];
 };
 
 export const getEventById = async (id: string): Promise<EventDetail> => {
