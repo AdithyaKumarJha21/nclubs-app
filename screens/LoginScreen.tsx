@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -19,6 +19,7 @@ type RoleRow = {
 
 export default function LoginScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ signedOut?: string }>();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -27,6 +28,9 @@ export default function LoginScreen() {
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
 
   const isValidEmail = (value: string) => /\S+@\S+\.\S+/.test(value);
+  const signOutMessage = useMemo(() => {
+    return params.signedOut === "1" ? "You have been signed out." : null;
+  }, [params.signedOut]);
 
   const handleLoginPress = async () => {
     setErrorMessage(null);
@@ -119,6 +123,7 @@ export default function LoginScreen() {
     >
       <View style={styles.card}>
         <Text style={styles.title}>Welcome Back!</Text>
+        {signOutMessage ? <Text style={styles.info}>{signOutMessage}</Text> : null}
 
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Email</Text>
@@ -263,5 +268,10 @@ const styles = StyleSheet.create({
     color: "red",
     fontSize: 13,
     marginTop: 8,
+  },
+  info: {
+    color: "#166534",
+    fontSize: 13,
+    marginBottom: 10,
   },
 });
