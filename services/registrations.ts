@@ -1,6 +1,13 @@
 import { normalizeSupabaseError } from "./api/errors";
 import { supabase } from "./supabase";
 
+type RegistrationErrorCode = "23505" | "42501";
+
+type RegistrationDbError = {
+  code?: string;
+  message?: string;
+};
+
 export type EventRegistration = {
   id: string;
   event_id: string;
@@ -10,9 +17,7 @@ export type EventRegistration = {
   registered_at: string;
 };
 
-const isDuplicateRegistrationError = (
-  error: { code?: string; message?: string } | null
-) => {
+const isDuplicateRegistrationError = (error: RegistrationDbError | null) => {
   if (!error) return false;
 
   if (error.code === "23505") return true;
@@ -25,7 +30,19 @@ const isDuplicateRegistrationError = (
   );
 };
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const mapRegistrationErrorMessage = (error: RegistrationDbError): string => {
+  const code = error.code as RegistrationErrorCode | undefined;
+
+  if (code === "23505") {
+    return "You are already registered";
+  }
+
+  if (code === "42501") {
+    return "Not allowed (RLS)";
+  }
+
+  return normalizeSupabaseError(error);
+};
 
 export const getMyRegistration = async (
   eventId: string
@@ -60,11 +77,11 @@ export const getMyRegistration = async (
 
 export const registerForEvent = async (
   eventId: string,
-  email: string,
-  usn: string
+  usn: string,
+  email: string
 ): Promise<{ registration: EventRegistration | null; alreadyRegistered: boolean }> => {
   const trimmedEmail = email.trim();
-  const trimmedUsn = usn.trim();
+  const normalizedUsn = usn.trim().toUpperCase();
 
   const {
     data: { user },
@@ -85,44 +102,39 @@ export const registerForEvent = async (
     return { registration: existingRegistration, alreadyRegistered: true };
   }
 
-  const { data, error } = await supabase
+  const payload = {
+    event_id: eventId,
+    user_id: user.id,
+    email: trimmedEmail,
+    usn: normalizedUsn,
+  };
+
+  const { error: upsertError } = await supabase
     .from("event_registrations")
-    .insert({
-      event_id: eventId,
-      user_id: user.id,
-      email: trimmedEmail,
-      usn: trimmedUsn,
+    .upsert(payload, {
+      onConflict: "event_id,user_id",
+      ignoreDuplicates: true,
     })
-    .select("id, event_id, user_id, email, usn, registered_at")
-    .single();
+    .select("id");
 
-  if (error) {
-    if (isDuplicateRegistrationError(error)) {
-      // Race-safe: fetch existing; if not found, retry once after a short delay
-      let existing = await getMyRegistration(eventId);
+  if (upsertError) {
+    if (isDuplicateRegistrationError(upsertError)) {
+      const existing = await getMyRegistration(eventId);
       if (existing) {
         return { registration: existing, alreadyRegistered: true };
       }
 
-      console.warn(
-        "⚠️ Duplicate detected; registration row not immediately visible. Retrying...",
-        { eventId, userId: user.id }
-      );
-
-      await sleep(250);
-
-      existing = await getMyRegistration(eventId);
-      if (existing) {
-        return { registration: existing, alreadyRegistered: true };
-      }
-
-      // Do NOT fabricate a row; that harms downstream workflow (missing id, etc.)
-      throw new Error("Registration conflict detected. Please refresh and try again.");
+      throw new Error("You are already registered");
     }
 
-    throw new Error(normalizeSupabaseError(error));
+    throw new Error(mapRegistrationErrorMessage(upsertError));
   }
 
-  return { registration: data, alreadyRegistered: false };
-};
+  const registration = await getMyRegistration(eventId);
 
+  if (!registration) {
+    throw new Error("Registration failed");
+  }
+
+  return { registration, alreadyRegistered: false };
+};
