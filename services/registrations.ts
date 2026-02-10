@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { normalizeSupabaseError } from "./api/errors";
 import { supabase } from "./supabase";
 
@@ -20,6 +21,36 @@ export type EventRegistration = {
 export type RegisterResult =
   | { ok: true; alreadyRegistered?: boolean }
   | { ok: false; message: string; code?: string };
+
+const registrationCacheKey = (eventId: string, userId: string) =>
+  `event_registration:${userId}:${eventId}`;
+
+const resolveAuthUserId = async (): Promise<string | null> => {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  return user?.id ?? null;
+};
+
+export const markEventRegisteredLocal = async (
+  eventId: string
+): Promise<void> => {
+  const userId = await resolveAuthUserId();
+  if (!userId) return;
+
+  await AsyncStorage.setItem(registrationCacheKey(eventId, userId), "1");
+};
+
+export const isEventRegisteredLocally = async (
+  eventId: string
+): Promise<boolean> => {
+  const userId = await resolveAuthUserId();
+  if (!userId) return false;
+
+  const value = await AsyncStorage.getItem(registrationCacheKey(eventId, userId));
+  return value === "1";
+};
 
 const isDuplicateRegistrationError = (error: RegistrationDbError | null) => {
   if (!error) return false;
@@ -82,6 +113,10 @@ export const getMyRegistration = async (
     throw new Error(normalizeSupabaseError(error));
   }
 
+  if (data) {
+    await markEventRegisteredLocal(eventId);
+  }
+
   return data ?? null;
 };
 
@@ -121,6 +156,7 @@ export const registerForEvent = async (
 
   if (insertError) {
     if (isDuplicateRegistrationError(insertError)) {
+      await markEventRegisteredLocal(eventId);
       return { ok: true, alreadyRegistered: true };
     }
 
@@ -135,5 +171,6 @@ export const registerForEvent = async (
     };
   }
 
+  await markEventRegisteredLocal(eventId);
   return { ok: true };
 };
