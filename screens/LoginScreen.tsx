@@ -19,7 +19,7 @@ type RoleRow = {
 
 export default function LoginScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ signedOut?: string }>();
+  const params = useLocalSearchParams<{ signedOut?: string; reason?: string }>();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -29,8 +29,10 @@ export default function LoginScreen() {
 
   const isValidEmail = (value: string) => /\S+@\S+\.\S+/.test(value);
   const signOutMessage = useMemo(() => {
-    return params.signedOut === "1" ? "You have been signed out." : null;
-  }, [params.signedOut]);
+    return params.signedOut === "1" || params.reason === "signed_out"
+      ? "You have been signed out."
+      : null;
+  }, [params.reason, params.signedOut]);
 
   const handleLoginPress = async () => {
     setErrorMessage(null);
