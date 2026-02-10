@@ -8,7 +8,7 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
-import { registerForEvent } from "../services/registrations";
+import { EventRegistration, registerForEvent } from "../services/registrations";
 import { supabase } from "../services/supabase";
 import { useTheme } from "../theme/ThemeContext";
 
@@ -18,7 +18,7 @@ interface EventRegistrationModalProps {
   eventTitle: string;
   initialEmail?: string | null;
   onClose: () => void;
-  onSuccess: (email: string, usn: string) => void;
+  onSuccess: (registration: EventRegistration) => void;
 }
 
 export default function EventRegistrationModal({
@@ -69,21 +69,30 @@ export default function EventRegistrationModal({
     try {
       setLoading(true);
 
-      const { alreadyRegistered } = await registerForEvent(eventId, email, usn);
+      const { registration, alreadyRegistered } = await registerForEvent(eventId, email, usn);
+
+      if (!registration) {
+        throw new Error("Could not confirm registration state. Please try again.");
+      }
 
       if (alreadyRegistered) {
         Alert.alert("Already Registered", "You are already registered for this event");
       } else {
-        Alert.alert("Success", "Successfully registered for the event!");
+        Alert.alert("Success", "Successfully registered!");
       }
 
-      onSuccess(email.trim(), usn.trim());
+      onSuccess(registration);
       setEmail("");
       setUsn("");
       onClose();
     } catch (error) {
       console.error("Registration error:", error);
-      Alert.alert("Error", "Failed to register for event");
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : "Failed to register for event";
+
+      Alert.alert("Error", message);
     } finally {
       setLoading(false);
     }

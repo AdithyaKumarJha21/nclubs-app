@@ -62,6 +62,11 @@ export const registerForEvent = async (
     eventId,
   });
 
+  const existingRegistration = await getMyRegistration(eventId);
+  if (existingRegistration) {
+    return { registration: existingRegistration, alreadyRegistered: true };
+  }
+
   const { data, error } = await supabase
     .from("event_registrations")
     .insert({
@@ -76,7 +81,13 @@ export const registerForEvent = async (
   if (error) {
     if (error.code === "23505") {
       const existing = await getMyRegistration(eventId);
-      return { registration: existing, alreadyRegistered: true };
+      if (existing) {
+        return { registration: existing, alreadyRegistered: true };
+      }
+
+      throw new Error(
+        "Registration conflict detected. Please refresh and try again."
+      );
     }
 
     throw new Error(normalizeSupabaseError(error));

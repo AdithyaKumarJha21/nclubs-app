@@ -127,18 +127,8 @@ export default function EventDetailsScreen() {
     } as const;
   }, [event, now]);
 
-  const handleRegistrationSuccess = (email: string, usn: string) => {
-    setRegistration((prev) =>
-      prev ??
-      ({
-        id: "",
-        event_id: resolvedEventId,
-        user_id: user?.id ?? "",
-        email,
-        usn,
-        registered_at: new Date().toISOString(),
-      } as EventRegistration)
-    );
+  const handleRegistrationSuccess = (newRegistration: EventRegistration) => {
+    setRegistration(newRegistration);
     setShowRegistrationModal(false);
   };
 
@@ -206,7 +196,7 @@ export default function EventDetailsScreen() {
 
           {isRegistered && (
             <View style={[styles.badge, { backgroundColor: "#4caf50" }]}>
-              <Text style={styles.badgeText}>✓ Registered</Text>
+              <Text style={styles.badgeText}>You are registered</Text>
             </View>
           )}
 
@@ -243,6 +233,10 @@ export default function EventDetailsScreen() {
 
           {isRegistered ? (
             <View style={styles.scanSection}>
+              <TouchableOpacity style={[styles.registeredButton]} disabled>
+                <Text style={styles.registeredButtonText}>Registered ✓</Text>
+              </TouchableOpacity>
+
               <TouchableOpacity
                 style={[
                   styles.scanButton,
@@ -259,7 +253,6 @@ export default function EventDetailsScreen() {
               >
                 {scanStatus?.message}
               </Text>
-
             </View>
           ) : (
             <View>
@@ -373,6 +366,21 @@ const styles = StyleSheet.create({
   },
   scanSection: {
     marginBottom: 12,
+  },
+
+  registeredButton: {
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#4caf50",
+    backgroundColor: "#e8f5e9",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  registeredButtonText: {
+    color: "#2e7d32",
+    fontWeight: "700",
+    fontSize: 15,
   },
   scanButton: {
     paddingVertical: 14,
