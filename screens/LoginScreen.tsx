@@ -28,10 +28,16 @@ export default function LoginScreen() {
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
 
   const isValidEmail = (value: string) => /\S+@\S+\.\S+/.test(value);
-  const signOutMessage = useMemo(() => {
-    return params.signedOut === "1" || params.reason === "signed_out"
-      ? "You have been signed out."
-      : null;
+  const infoMessage = useMemo(() => {
+    if (params.reason === "password_reset") {
+      return "Password updated. Please log in with your new password.";
+    }
+
+    if (params.signedOut === "1" || params.reason === "signed_out") {
+      return "You have been signed out.";
+    }
+
+    return null;
   }, [params.reason, params.signedOut]);
 
   const handleLoginPress = async () => {
@@ -125,7 +131,7 @@ export default function LoginScreen() {
     >
       <View style={styles.card}>
         <Text style={styles.title}>Welcome Back!</Text>
-        {signOutMessage ? <Text style={styles.info}>{signOutMessage}</Text> : null}
+        {infoMessage ? <Text style={styles.info}>{infoMessage}</Text> : null}
 
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Email</Text>
