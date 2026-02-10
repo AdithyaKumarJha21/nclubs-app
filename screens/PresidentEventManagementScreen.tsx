@@ -70,12 +70,15 @@ export default function PresidentEventManagementScreen() {
     try {
       setLoading(true);
       // Fetch only events created by this president
+      const nowIso = new Date().toISOString();
       const { data, error } = await supabase
         .from("events")
         .select(
           "id, title, event_date, start_time, end_time, location, club_id, created_by, qr_enabled"
         )
         .eq("created_by", user.id)
+        .eq("status", "active")
+        .gte("end_time", nowIso)
         .order("event_date", { ascending: true });
 
       if (error) throw error;
@@ -229,7 +232,7 @@ export default function PresidentEventManagementScreen() {
               { color: isDark ? "#aaa" : "#666" },
             ]}
           >
-            No events created yet. Tap "+ Add Event" to create one!
+            No upcoming active events to manage. Tap + Add Event to create one!
           </Text>
         </View>
       ) : (

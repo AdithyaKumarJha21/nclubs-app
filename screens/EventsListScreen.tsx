@@ -1,12 +1,15 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-    ActivityIndicator,
-    FlatList,
-    Pressable,
-    StyleSheet,
-    Text,
-    View,
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { EventListItem, getEventsForStudent } from "../services/events";
 import { useTheme } from "../theme/ThemeContext";
@@ -20,37 +23,94 @@ const formatTime = (iso: string): string => {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 };
 
+type SortOption = "date-asc" | "date-desc" | "name-asc" | "club-asc";
+
+const SORT_OPTIONS: { label: string; value: SortOption }[] = [
+  { label: "Date (Soonest First)", value: "date-asc" },
+  { label: "Date (Latest First)", value: "date-desc" },
+  { label: "Name (A-Z)", value: "name-asc" },
+  { label: "Club Name (A-Z)", value: "club-asc" },
+];
+
 export default function EventsListScreen() {
   const router = useRouter();
-  const { isDark } = useTheme();
+  const { isDark, theme } = useTheme();
   const [events, setEvents] = useState<EventListItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [sortOption, setSortOption] = useState<SortOption>("date-asc");
+  const [showAllEvents, setShowAllEvents] = useState(false);
 
   useEffect(() => {
-    fetchAndFilterEvents();
-  }, []);
+    const timer = setTimeout(() => {
+      setDebouncedQuery(searchQuery.trim().toLowerCase());
+    }, 300);
 
-  const fetchAndFilterEvents = async () => {
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    fetchEvents();
+  }, [showAllEvents]);
+
+  const fetchEvents = async () => {
     try {
       setLoading(true);
-
-      const data = await getEventsForStudent();
-
-      // ✅ FILTER OUT EXPIRED EVENTS (EVENT DATE IN THE FUTURE)
-      const now = new Date();
-      const upcomingEvents = data.filter((event) => {
-        const eventDate = new Date(event.event_date);
-        return eventDate >= now; // Only show future events
-      });
-
-      setEvents(upcomingEvents);
-      setLoading(false);
+      const data = await getEventsForStudent({ includePast: showAllEvents });
+      setEvents(data);
     } catch (err) {
       console.error("Unexpected error:", err);
       setEvents([]);
+    } finally {
       setLoading(false);
     }
   };
+
+  const displayedEvents = useMemo(() => {
+    const filtered = events.filter((event) => {
+      if (!debouncedQuery) return true;
+
+      const searchableFields = [
+        event.title,
+        event.description || "",
+        event.location || "",
+        event.club_name || ""
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      return searchableFields.includes(debouncedQuery);
+    });
+
+    const sorted = [...filtered].sort((a, b) => {
+      if (sortOption === "date-asc") {
+        return new Date(a.start_time).getTime() - new Date(b.start_time).getTime();
+      }
+
+      if (sortOption === "date-desc") {
+        return new Date(b.start_time).getTime() - new Date(a.start_time).getTime();
+      }
+
+      if (sortOption === "name-asc") {
+        return a.title.localeCompare(b.title);
+      }
+
+      return (a.club_name || "").localeCompare(b.club_name || "");
+    });
+
+    return sorted;
+  }, [debouncedQuery, events, sortOption]);
+
+  const noSearchResults = debouncedQuery.length > 0 && displayedEvents.length === 0;
+
+  const handleSortChange = () => {
+    const currentIndex = SORT_OPTIONS.findIndex((option) => option.value === sortOption);
+    const nextIndex = (currentIndex + 1) % SORT_OPTIONS.length;
+    setSortOption(SORT_OPTIONS[nextIndex].value);
+  };
+
+  const currentSortLabel = SORT_OPTIONS.find((option) => option.value === sortOption)?.label;
 
   if (loading) {
     return (
@@ -78,21 +138,102 @@ export default function EventsListScreen() {
           { color: isDark ? "#fff" : "#000" },
         ]}
       >
-        Upcoming Events
+        Events
       </Text>
 
-      {events.length === 0 ? (
+      <View
+        style={[
+          styles.searchContainer,
+          {
+            backgroundColor: theme.card,
+            borderColor: isDark ? "#1f2937" : "#e2e8f0",
+          },
+        ]}
+      >
+        <Ionicons name="search-outline" size={18} color="#94a3b8" />
+        <TextInput
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="Search events by name, club, or description..."
+          placeholderTextColor={isDark ? "#94a3b8" : "#6b7280"}
+          style={[styles.searchInput, { color: theme.text }]}
+          returnKeyType="search"
+        />
+        {searchQuery.trim().length > 0 ? (
+          <TouchableOpacity onPress={() => setSearchQuery("")} accessibilityLabel="Clear search">
+            <Text style={styles.clearText}>×</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+
+      <View style={styles.controlsRow}>
+        <TouchableOpacity
+          style={[styles.controlButton, { backgroundColor: isDark ? "#2a2a2a" : "#f1f5f9" }]}
+          onPress={handleSortChange}
+        >
+          <Text style={[styles.controlText, { color: isDark ? "#fff" : "#0f172a" }]}>Sort: {currentSortLabel}</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.controlButton,
+            { backgroundColor: isDark ? "#2a2a2a" : "#f1f5f9" },
+            !showAllEvents && styles.controlButtonActive,
+          ]}
+          onPress={() => setShowAllEvents(false)}
+        >
+          <Text
+            style={[
+              styles.controlText,
+              { color: !showAllEvents ? "#fff" : isDark ? "#fff" : "#0f172a" },
+            ]}
+          >
+            Upcoming Events
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.controlButton,
+            { backgroundColor: isDark ? "#2a2a2a" : "#f1f5f9" },
+            showAllEvents && styles.controlButtonActive,
+          ]}
+          onPress={() => setShowAllEvents(true)}
+        >
+          <Text
+            style={[
+              styles.controlText,
+              { color: showAllEvents ? "#fff" : isDark ? "#fff" : "#0f172a" },
+            ]}
+          >
+            All Events
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {noSearchResults ? (
         <Text
           style={[
             styles.emptyText,
             { color: isDark ? "#aaa" : "#666" },
           ]}
         >
-          No upcoming events at the moment.
+          No events match your search. Try different keywords.
+        </Text>
+      ) : displayedEvents.length === 0 ? (
+        <Text
+          style={[
+            styles.emptyText,
+            { color: isDark ? "#aaa" : "#666" },
+          ]}
+        >
+          {showAllEvents
+            ? "No events available yet."
+            : "No upcoming events scheduled. Check back soon!"}
         </Text>
       ) : (
         <FlatList
-          data={events}
+          data={displayedEvents}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
             <Pressable
@@ -118,14 +259,16 @@ export default function EventsListScreen() {
               >
                 {item.title}
               </Text>
+              {item.club_name ? (
+                <Text style={[styles.meta, { color: isDark ? "#aaa" : "#666" }]}>🏷️ {item.club_name}</Text>
+              ) : null}
               <Text
                 style={[
                   styles.meta,
                   { color: isDark ? "#aaa" : "#666" },
                 ]}
               >
-                📅 {new Date(item.event_date).toLocaleDateString()} at{" "}
-                {formatTime(item.start_time)}
+                📅 {new Date(item.event_date).toLocaleDateString()} at {formatTime(item.start_time)}
               </Text>
               <Text
                 style={[
@@ -152,6 +295,46 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "700",
     marginBottom: 12,
+  },
+  searchContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 10,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+  },
+  clearText: {
+    fontSize: 20,
+    lineHeight: 20,
+    color: "#94a3b8",
+    paddingHorizontal: 4,
+  },
+  controlsRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 12,
+  },
+  controlButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    borderRadius: 8,
+    flex: 1,
+    justifyContent: "center",
+  },
+  controlButtonActive: {
+    backgroundColor: "#2563eb",
+  },
+  controlText: {
+    fontSize: 12,
+    fontWeight: "600",
+    textAlign: "center",
   },
   emptyText: {
     fontSize: 16,
