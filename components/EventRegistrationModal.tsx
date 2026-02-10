@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { useRouter } from "expo-router";
 import {
   Alert,
   Modal,
@@ -12,6 +11,7 @@ import {
 import {
   EventRegistration,
   getMyRegistration,
+  RegisterResult,
   registerForEvent,
 } from "../services/registrations";
 import { supabase } from "../services/supabase";
@@ -34,7 +34,6 @@ export default function EventRegistrationModal({
   onClose,
   onSuccess,
 }: EventRegistrationModalProps) {
-  const router = useRouter();
   const { isDark } = useTheme();
   const [email, setEmail] = useState("");
   const [usn, setUsn] = useState("");
@@ -55,7 +54,7 @@ export default function EventRegistrationModal({
       }
 
       if (existingRegistration) {
-        Alert.alert("Already registered", "You are already registered");
+        Alert.alert("Already registered", "You're already registered ✅");
         onSuccess(existingRegistration);
         onClose();
         setIsCheckingRegistration(false);
@@ -109,45 +108,49 @@ export default function EventRegistrationModal({
     try {
       setIsSubmitting(true);
 
-      const { registration, alreadyRegistered } = await registerForEvent(
-        eventId,
-        usn,
-        email
-      );
+      const result: RegisterResult = await registerForEvent(eventId, usn, email);
 
-      if (!registration) {
-        throw new Error("Could not confirm registration state. Please try again.");
+      if (!result.ok) {
+        const message = "message" in result ? result.message : "Registration failed";
+        Alert.alert("Error", message);
+        return;
       }
 
-      if (alreadyRegistered) {
-        Alert.alert("Already registered", "You are already registered");
+      if (result.alreadyRegistered) {
+        Alert.alert("Already registered", "You're already registered ✅");
       } else {
         Alert.alert("Success", "Successfully registered!");
       }
 
-      onSuccess(registration);
+      const latestRegistration = await getMyRegistration(eventId);
+
+      if (latestRegistration) {
+        onSuccess(latestRegistration);
+      } else {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        if (!user) {
+          Alert.alert("Error", "Registration succeeded but could not load status.");
+          return;
+        }
+
+        onSuccess({
+          id: `optimistic-${eventId}-${user.id}`,
+          event_id: eventId,
+          user_id: user.id,
+          email: email.trim(),
+          usn: usn.trim().toUpperCase(),
+          registered_at: new Date().toISOString(),
+        });
+      }
+
       setEmail("");
       setUsn("");
       onClose();
-      router.replace({ pathname: "/event-details", params: { eventId } });
     } catch (error) {
       console.error("Registration error:", error);
-
-      const message =
-        error instanceof Error && error.message
-          ? error.message
-          : "Registration failed";
-
-      if (message === "You are already registered") {
-        Alert.alert("Already registered", "You are already registered");
-        return;
-      }
-
-      if (message === "Not allowed (RLS)") {
-        Alert.alert("Not allowed", "Not allowed (RLS)");
-        return;
-      }
-
       Alert.alert("Error", "Registration failed");
     } finally {
       setIsSubmitting(false);
