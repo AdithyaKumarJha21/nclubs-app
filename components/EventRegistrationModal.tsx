@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { useRouter } from "expo-router";
 import {
   Alert,
   Modal,
@@ -35,7 +34,6 @@ export default function EventRegistrationModal({
   onClose,
   onSuccess,
 }: EventRegistrationModalProps) {
-  const router = useRouter();
   const { isDark } = useTheme();
   const [email, setEmail] = useState("");
   const [usn, setUsn] = useState("");
@@ -151,7 +149,6 @@ export default function EventRegistrationModal({
       setEmail("");
       setUsn("");
       onClose();
-      router.replace({ pathname: "/event-details", params: { eventId } });
     } catch (error) {
       console.error("Registration error:", error);
       Alert.alert("Error", "Registration failed");
