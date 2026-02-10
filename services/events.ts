@@ -21,6 +21,7 @@ export type EventListItem = {
   end_time: string;
   description: string | null;
   qr_enabled: boolean;
+  club_name?: string | null;
 };
 
 export type EventDetail = EventListItem & {
@@ -109,17 +110,37 @@ const buildSupabaseError = (error: { code?: string; message?: string }): Supabas
 const eventRowSelect =
   "id, title, description, location, event_date, start_time, end_time, created_by, qr_enabled, qr_token, qr_updated_at";
 
-export const getEventsForStudent = async (): Promise<EventListItem[]> => {
-  const { data, error } = await supabase
+export const getEventsForStudent = async (options?: { includePast?: boolean }): Promise<EventListItem[]> => {
+  const nowIso = new Date().toISOString();
+
+  let query = supabase
     .from("events")
-    .select("id, title, event_date, location, start_time, end_time, description, qr_enabled")
-    .order("event_date", { ascending: true });
+    .select(
+      "id, title, event_date, location, start_time, end_time, description, qr_enabled, clubs(name)"
+    )
+    .eq("status", "active");
+
+  if (!options?.includePast) {
+    query = query.gte("end_time", nowIso);
+  }
+
+  const { data, error } = await query.order("event_date", { ascending: true });
 
   if (error) {
     throw new Error(normalizeSupabaseError(error));
   }
 
-  return (data ?? []) as EventListItem[];
+  return (data ?? []).map((event: any) => ({
+    id: event.id,
+    title: event.title,
+    event_date: event.event_date,
+    location: event.location,
+    start_time: event.start_time,
+    end_time: event.end_time,
+    description: event.description,
+    qr_enabled: event.qr_enabled,
+    club_name: event.clubs?.name ?? null,
+  })) as EventListItem[];
 };
 
 export const getEventById = async (id: string): Promise<EventDetail> => {
