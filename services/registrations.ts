@@ -109,16 +109,13 @@ export const registerForEvent = async (
     usn: normalizedUsn,
   };
 
-  const { error: upsertError } = await supabase
+  const { error: insertError } = await supabase
     .from("event_registrations")
-    .upsert(payload, {
-      onConflict: "event_id,user_id",
-      ignoreDuplicates: true,
-    })
+    .insert(payload)
     .select("id");
 
-  if (upsertError) {
-    if (isDuplicateRegistrationError(upsertError)) {
+  if (insertError) {
+    if (isDuplicateRegistrationError(insertError)) {
       const existing = await getMyRegistration(eventId);
       if (existing) {
         return { registration: existing, alreadyRegistered: true };
@@ -127,7 +124,7 @@ export const registerForEvent = async (
       throw new Error("You are already registered");
     }
 
-    throw new Error(mapRegistrationErrorMessage(upsertError));
+    throw new Error(mapRegistrationErrorMessage(insertError));
   }
 
   const registration = await getMyRegistration(eventId);
