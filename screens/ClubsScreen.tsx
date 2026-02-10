@@ -26,6 +26,8 @@ export default function ClubsScreen() {
   const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
+    let isActive = true;
+
     const loadClubs = async () => {
       setLoading(true);
 
@@ -34,6 +36,8 @@ export default function ClubsScreen() {
         .select("id, name, logo_url, description")
         .order("name");
 
+      if (!isActive) return;
+
       if (error) {
         console.error(error);
         setClubs([]);
@@ -41,10 +45,13 @@ export default function ClubsScreen() {
         return;
       }
 
-      let visibleClubs = data ?? [];
+      let visibleClubs: Club[] = (data ?? []) as Club[];
 
       if (user?.role === "president" || user?.role === "faculty") {
         const myClubIds = await getMyClubs(user);
+
+        if (!isActive) return;
+
         visibleClubs = visibleClubs.filter((club) => myClubIds.includes(club.id));
       }
 
@@ -53,6 +60,10 @@ export default function ClubsScreen() {
     };
 
     loadClubs();
+
+    return () => {
+      isActive = false;
+    };
   }, [user]);
 
   const trimmedQuery = searchQuery.trim();
