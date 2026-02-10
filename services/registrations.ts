@@ -30,14 +30,15 @@ export const getMyRegistration = async (
     .select("id, event_id, user_id, email, usn, registered_at")
     .eq("event_id", eventId)
     .eq("user_id", user.id)
-    .maybeSingle();
+    .order("registered_at", { ascending: false })
+    .limit(1);
 
   if (error) {
     console.error("❌ Registration lookup failed", { eventId, error });
     throw new Error(normalizeSupabaseError(error));
   }
 
-  return data ?? null;
+  return data?.[0] ?? null;
 };
 
 export const registerForEvent = async (
@@ -85,6 +86,11 @@ export const registerForEvent = async (
         return { registration: existing, alreadyRegistered: true };
       }
 
+      console.warn("⚠️ Unique conflict hit but registration row could not be fetched", {
+        eventId,
+        userId: user.id,
+      });
+
       throw new Error(
         "Registration conflict detected. Please refresh and try again."
       );
@@ -95,3 +101,4 @@ export const registerForEvent = async (
 
   return { registration: data, alreadyRegistered: false };
 };
+
