@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import {
-    Alert,
-    Modal,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  Modal,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { EventRegistration, registerForEvent } from "../services/registrations";
 import { supabase } from "../services/supabase";
@@ -69,7 +69,11 @@ export default function EventRegistrationModal({
     try {
       setLoading(true);
 
-      const { registration, alreadyRegistered } = await registerForEvent(eventId, email, usn);
+      const { registration, alreadyRegistered } = await registerForEvent(
+        eventId,
+        email,
+        usn
+      );
 
       if (!registration) {
         throw new Error("Could not confirm registration state. Please try again.");
@@ -87,10 +91,17 @@ export default function EventRegistrationModal({
       onClose();
     } catch (error) {
       console.error("Registration error:", error);
+
       const message =
         error instanceof Error && error.message
           ? error.message
           : "Failed to register for event";
+
+      // Workflow-safe: if backend signals already registered, show the correct alert
+      if (message.toLowerCase().includes("already registered") || message.toLowerCase().includes("already")) {
+        Alert.alert("Already Registered", "You are already registered for this event");
+        return;
+      }
 
       Alert.alert("Error", message);
     } finally {
@@ -105,32 +116,18 @@ export default function EventRegistrationModal({
       animationType="fade"
       onRequestClose={onClose}
     >
-      <TouchableOpacity
-        style={styles.overlay}
-        activeOpacity={1}
-        onPress={onClose}
-      >
+      <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
         <View
           style={[
             styles.container,
             { backgroundColor: isDark ? "#2a2a2a" : "#fff" },
           ]}
         >
-          <Text
-            style={[
-              styles.title,
-              { color: isDark ? "#fff" : "#000" },
-            ]}
-          >
+          <Text style={[styles.title, { color: isDark ? "#fff" : "#000" }]}>
             Register for Event
           </Text>
 
-          <Text
-            style={[
-              styles.eventName,
-              { color: isDark ? "#aaa" : "#666" },
-            ]}
-          >
+          <Text style={[styles.eventName, { color: isDark ? "#aaa" : "#666" }]}>
             {eventTitle}
           </Text>
 

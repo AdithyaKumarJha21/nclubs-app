@@ -10,6 +10,23 @@ export type EventRegistration = {
   registered_at: string;
 };
 
+const isDuplicateRegistrationError = (
+  error: { code?: string; message?: string } | null
+) => {
+  if (!error) return false;
+
+  if (error.code === "23505") return true;
+
+  const normalizedMessage = error.message?.toLowerCase() ?? "";
+  return (
+    normalizedMessage.includes("duplicate key") ||
+    normalizedMessage.includes("unique constraint") ||
+    normalizedMessage.includes("already exists")
+  );
+};
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export const getMyRegistration = async (
   eventId: string
 ): Promise<EventRegistration | null> => {
@@ -80,20 +97,27 @@ export const registerForEvent = async (
     .single();
 
   if (error) {
-    if (error.code === "23505") {
-      const existing = await getMyRegistration(eventId);
+    if (isDuplicateRegistrationError(error)) {
+      // Race-safe: fetch existing; if not found, retry once after a short delay
+      let existing = await getMyRegistration(eventId);
       if (existing) {
         return { registration: existing, alreadyRegistered: true };
       }
 
-      console.warn("⚠️ Unique conflict hit but registration row could not be fetched", {
-        eventId,
-        userId: user.id,
-      });
-
-      throw new Error(
-        "Registration conflict detected. Please refresh and try again."
+      console.warn(
+        "⚠️ Duplicate detected; registration row not immediately visible. Retrying...",
+        { eventId, userId: user.id }
       );
+
+      await sleep(250);
+
+      existing = await getMyRegistration(eventId);
+      if (existing) {
+        return { registration: existing, alreadyRegistered: true };
+      }
+
+      // Do NOT fabricate a row; that harms downstream workflow (missing id, etc.)
+      throw new Error("Registration conflict detected. Please refresh and try again.");
     }
 
     throw new Error(normalizeSupabaseError(error));
