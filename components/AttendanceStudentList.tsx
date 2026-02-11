@@ -6,6 +6,7 @@ export type AttendanceStudent = {
   name: string;
   email?: string;
   usn?: string;
+  student_usn?: string | null;
   eventTitle?: string;
   scan_time?: string;
 };
@@ -73,7 +74,7 @@ export default function AttendanceStudentList({
       <FlatList
         data={students}
         keyExtractor={(item) => item.id}
-        renderItem={({ item, index }) => (
+        renderItem={({ item: row, index }) => (
           <View
             style={[
               styles.studentRow,
@@ -89,13 +90,13 @@ export default function AttendanceStudentList({
             ]}
           >
             <View style={styles.studentInfo}>
-              <Text
+                <Text
                 style={[
                   styles.studentName,
                   { color: isDark ? "#fff" : "#000" },
                 ]}
               >
-                {item.name}
+                {row.name}
               </Text>
               <Text
                 style={[
@@ -103,37 +104,37 @@ export default function AttendanceStudentList({
                   { color: isDark ? "#aaa" : "#666" },
                 ]}
               >
-                USN: {item.usn ?? "-"}
+                USN: {row.student_usn ?? "-"}
               </Text>
-              {item.eventTitle && (
+              {row.eventTitle && (
                 <Text
                   style={[
                     styles.studentEmail,
                     { color: isDark ? "#aaa" : "#666" },
                   ]}
                 >
-                  Event: {item.eventTitle}
+                  Event: {row.eventTitle}
                 </Text>
               )}
-              {item.email && (
+              {row.email && (
                 <Text
                   style={[
                     styles.studentEmail,
                     { color: isDark ? "#999" : "#999" },
                   ]}
                 >
-                  {item.email}
+                  {row.email}
                 </Text>
               )}
             </View>
-            {item.scan_time && (
+            {row.scan_time && (
               <Text
                 style={[
                   styles.scanTime,
                   { color: isDark ? "#888" : "#999" },
                 ]}
               >
-                {new Date(item.scan_time).toLocaleTimeString([], {
+                {new Date(row.scan_time).toLocaleTimeString([], {
                   hour: "2-digit",
                   minute: "2-digit",
                 })}
