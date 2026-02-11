@@ -18,30 +18,60 @@ export async function submitAttendance(eventId: string): Promise<AttendanceSubmi
 
   if (userError || !user) {
     const message = "Not authorized.";
-    console.error("❌ submitAttendance user resolution failed", { eventId, userError });
+    console.error("❌ submitAttendance user resolution failed", { eventId, clubId: null });
     return { ok: false, message };
   }
 
-  console.log("📸 submitAttendance request", { eventId, userId: user.id });
+  const { data: event, error: eventError } = await supabase
+    .from("events")
+    .select("id, club_id")
+    .eq("id", eventId)
+    .single();
+
+  if (eventError) {
+    console.error("❌ submitAttendance event lookup failed", { eventId, clubId: null });
+    return {
+      ok: false,
+      code: eventError.code,
+      message: normalizeSupabaseError(eventError),
+    };
+  }
+
+  if (!event.club_id) {
+    return {
+      ok: false,
+      message: "Event is missing club assignment. Contact admin.",
+    };
+  }
+
+  const clubId = event.club_id;
+
+  console.log("📸 submitAttendance request", { eventId, clubId });
 
   const payload = {
     event_id: eventId,
     student_id: user.id,
+    club_id: clubId,
   };
 
-  const { data, error } = await supabase.from("attendance").insert(payload).select("event_id").maybeSingle();
+  const { error } = await supabase.from("attendance").insert(payload).select("event_id").maybeSingle();
 
   console.log("🧾 submitAttendance insert result", {
     eventId,
-    userId: user.id,
-    payload,
-    data,
-    error,
+    clubId,
   });
 
   if (error) {
     if (error.code === "23505") {
       return { ok: true, already: true };
+    }
+
+    if (error.code === "23503") {
+      return {
+        ok: false,
+        code: "23503",
+        message: "Event club mapping missing. Contact admin.",
+      };
     }
 
     if (error.code === "42501") {
