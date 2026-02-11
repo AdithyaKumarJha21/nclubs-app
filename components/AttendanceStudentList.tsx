@@ -6,6 +6,7 @@ export type AttendanceStudent = {
   name: string;
   email?: string;
   usn?: string;
+  eventTitle?: string;
   scan_time?: string;
 };
 
@@ -96,14 +97,22 @@ export default function AttendanceStudentList({
               >
                 {item.name}
               </Text>
-              {item.usn && (
+              <Text
+                style={[
+                  styles.studentUSN,
+                  { color: isDark ? "#aaa" : "#666" },
+                ]}
+              >
+                USN: {item.usn ?? "-"}
+              </Text>
+              {item.eventTitle && (
                 <Text
                   style={[
-                    styles.studentUSN,
+                    styles.studentEmail,
                     { color: isDark ? "#aaa" : "#666" },
                   ]}
                 >
-                  USN: {item.usn}
+                  Event: {item.eventTitle}
                 </Text>
               )}
               {item.email && (

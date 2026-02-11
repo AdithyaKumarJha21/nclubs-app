@@ -16,6 +16,47 @@ import AttendanceStudentList, {
 } from "../components/AttendanceStudentList";
 import EventList, { EventListItem } from "../components/EventList";
 
+type AttendanceProfile = {
+  id: string;
+  name: string | null;
+  usn: string | null;
+  email: string | null;
+};
+
+type AttendanceEvent = {
+  id: string;
+  title: string;
+};
+
+type AttendanceRow = {
+  id: string;
+  created_at: string | null;
+  scanned_at?: string | null;
+  event_id: string;
+  club_id: string;
+  student_id: string;
+  events: AttendanceEvent | AttendanceEvent[] | null;
+  profiles: AttendanceProfile | AttendanceProfile[] | null;
+};
+
+type StudentAttendanceEvent = {
+  id: string;
+  title: string;
+  date: string;
+  attended: boolean;
+};
+
+type EventScan = {
+  event_id: string;
+};
+
+type MinimalProfile = {
+  id: string;
+  name: string | null;
+  usn: string | null;
+  email: string | null;
+};
+
 /**
  * ✅ ATTENDANCE HISTORY SCREEN
  * - For Faculty/President: Shows events first, then students who scanned for each event
@@ -34,7 +75,7 @@ export default function AttendanceHistoryScreen() {
   const [isLoading, setIsLoading] = useState(false);
 
   // For student view
-  const [studentEvents, setStudentEvents] = useState<any[]>([]);
+  const [studentEvents, setStudentEvents] = useState<StudentAttendanceEvent[]>([]);
 
   /* ===============================
      🔐 ROUTE PROTECTION
@@ -48,17 +89,6 @@ export default function AttendanceHistoryScreen() {
     }
 
   }, [user, loading, router]);
-
-  /* ===============================
-     📦 FETCH EVENTS (FACULTY/PRESIDENT & STUDENTS)
-     =============================== */
-  useEffect(() => {
-    if (user && isFacultyView(user)) {
-      fetchEvents();
-    } else if (user && isStudentView(user)) {
-      fetchStudentAttendanceHistory();
-    }
-  }, [user, fetchStudentAttendanceHistory]);
 
   const fetchEvents = async () => {
     try {
@@ -111,7 +141,7 @@ export default function AttendanceHistoryScreen() {
 
       // Get attended event IDs
       const attendedEventIds = new Set(
-        (scanData || []).map((scan: any) => scan.event_id)
+        ((scanData as EventScan[] | null) || []).map((scan) => scan.event_id)
       );
 
       // Map events with attendance status
@@ -132,6 +162,17 @@ export default function AttendanceHistoryScreen() {
   }, [user]);
 
   /* ===============================
+     📦 FETCH EVENTS (FACULTY/PRESIDENT & STUDENTS)
+     =============================== */
+  useEffect(() => {
+    if (user && isFacultyView(user)) {
+      fetchEvents();
+    } else if (user && isStudentView(user)) {
+      fetchStudentAttendanceHistory();
+    }
+  }, [user, fetchStudentAttendanceHistory]);
+
+  /* ===============================
      📦 FETCH ATTENDANCE FOR EVENT
      =============================== */
   const handleSelectEvent = async (event: EventListItem) => {
@@ -149,7 +190,15 @@ export default function AttendanceHistoryScreen() {
         .select(
           `
           id,
+          created_at,
           scanned_at,
+          event_id,
+          club_id,
+          student_id,
+          events (
+            id,
+            title
+          ),
           profiles:student_id (
             id,
             name,
@@ -159,21 +208,80 @@ export default function AttendanceHistoryScreen() {
         `
         )
         .eq("event_id", eventId)
-        .order("scanned_at", { ascending: true });
+        .order("created_at", { ascending: true });
 
       if (error) throw error;
 
-      const students: AttendanceStudent[] = (data || []).map((scan: any) => ({
-        id: scan.profiles?.id || scan.id,
-        name: scan.profiles?.name || "Unknown",
-        email: scan.profiles?.email,
-        usn: scan.profiles?.usn,
-        scan_time: scan.scanned_at,
-      }));
+      const attendanceRows: AttendanceRow[] = (data as AttendanceRow[] | null) || [];
+
+      const initialProfileMap = new Map<string, MinimalProfile>();
+      for (const row of attendanceRows) {
+        const joinedProfile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
+        if (joinedProfile?.id) {
+          initialProfileMap.set(row.student_id, joinedProfile);
+        }
+      }
+
+      const missingStudentIds = attendanceRows
+        .map((row) => row.student_id)
+        .filter((studentId) => !initialProfileMap.has(studentId));
+
+      if (missingStudentIds.length > 0) {
+        const uniqueMissingStudentIds = Array.from(new Set(missingStudentIds));
+        const { data: fallbackProfiles, error: profileError } = await supabase
+          .from("profiles")
+          .select("id, name, usn, email")
+          .in("id", uniqueMissingStudentIds);
+
+        if (profileError) {
+          console.error("Error fetching fallback profiles:", {
+            code: profileError.code,
+            message: profileError.message,
+          });
+        } else {
+          for (const profile of (fallbackProfiles as MinimalProfile[] | null) || []) {
+            initialProfileMap.set(profile.id, profile);
+          }
+        }
+      }
+
+      const students: AttendanceStudent[] = attendanceRows.map((attendanceRow) => {
+        const rowProfile = Array.isArray(attendanceRow.profiles)
+          ? attendanceRow.profiles[0]
+          : attendanceRow.profiles;
+        const mergedProfile = rowProfile || initialProfileMap.get(attendanceRow.student_id) || null;
+        const event = Array.isArray(attendanceRow.events)
+          ? attendanceRow.events[0]
+          : attendanceRow.events;
+
+        return {
+          id: attendanceRow.id,
+          name: mergedProfile?.name ?? "Unknown student",
+          email: mergedProfile?.email ?? undefined,
+          usn: mergedProfile?.usn ?? "-",
+          eventTitle: event?.title ?? selectedEvent?.title ?? "Untitled event",
+          scan_time: attendanceRow.created_at ?? attendanceRow.scanned_at ?? undefined,
+        };
+      });
+
+      const resolvedProfilesCount = students.filter(
+        (student) => student.name !== "Unknown student"
+      ).length;
+
+      console.log("Attendance rows fetched:", attendanceRows.length);
+      console.log("Attendance rows with resolved profiles.name:", resolvedProfilesCount);
 
       setAttendanceData(students);
     } catch (error) {
-      console.error("Error fetching attendance:", error);
+      if (typeof error === "object" && error !== null && "code" in error && "message" in error) {
+        const supabaseError = error as { code?: string; message?: string };
+        console.error("Error fetching attendance:", {
+          code: supabaseError.code,
+          message: supabaseError.message,
+        });
+      } else {
+        console.error("Error fetching attendance:", error);
+      }
       setAttendanceData([]);
     } finally {
       setIsLoading(false);
