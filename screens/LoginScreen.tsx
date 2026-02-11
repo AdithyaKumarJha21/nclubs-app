@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Linking from "expo-linking";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -20,7 +20,12 @@ type RoleRow = {
 
 export default function LoginScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ signedOut?: string; reason?: string }>();
+  const params = useLocalSearchParams<{
+    signedOut?: string;
+    reason?: string;
+    email?: string;
+    pendingConfirm?: string;
+  }>();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -35,12 +40,23 @@ export default function LoginScreen() {
       return "Password updated. Please log in with your new password.";
     }
 
+    if (params.pendingConfirm === "1") {
+      return "Confirmation email requested. Check inbox/spam, then tap Resend confirmation email once if needed.";
+    }
+
     if (params.signedOut === "1" || params.reason === "signed_out") {
       return "You have been signed out.";
     }
 
     return null;
-  }, [params.reason, params.signedOut]);
+  }, [params.pendingConfirm, params.reason, params.signedOut]);
+
+
+  useEffect(() => {
+    if (typeof params.email === "string" && params.email.trim()) {
+      setEmail(params.email.trim().toLowerCase());
+    }
+  }, [params.email]);
 
   const handleLoginPress = async () => {
     setErrorMessage(null);
