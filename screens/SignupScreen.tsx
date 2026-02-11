@@ -122,10 +122,6 @@ export default function SignupScreen() {
       password,
       options: {
         emailRedirectTo,
-        data: {
-          name,
-          usn,
-        },
       },
     });
 
@@ -190,6 +186,15 @@ export default function SignupScreen() {
         return;
       }
 
+      Alert.alert("Signup successful 🎉", "You can now log in.");
+    }
+
+    if (!data.session) {
+      Alert.alert(
+        "Signup successful 🎉",
+        "Check your email to confirm your account."
+      );
+    } else {
       Alert.alert("Signup successful 🎉", "You can now log in.");
     }
 

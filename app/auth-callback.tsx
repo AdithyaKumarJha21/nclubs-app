@@ -1,4 +1,3 @@
-import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
@@ -14,29 +13,6 @@ export default function AuthCallbackScreen() {
 
   useEffect(() => {
     const resolveAuthCallback = async () => {
-      const callbackUrl = await Linking.getInitialURL();
-
-      if (callbackUrl) {
-        console.log("[auth-callback] received URL", callbackUrl);
-
-        const parsed = Linking.parse(callbackUrl);
-        const code = parsed.queryParams?.code;
-
-        if (typeof code === "string") {
-          const { error: exchangeError } =
-            await supabase.auth.exchangeCodeForSession(code);
-
-          if (exchangeError) {
-            console.error(
-              "[auth-callback] exchangeCodeForSession error",
-              exchangeError.message
-            );
-          } else {
-            console.log("[auth-callback] exchangeCodeForSession success");
-          }
-        }
-      }
-
       const {
         data: { session },
         error,

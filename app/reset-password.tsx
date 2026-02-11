@@ -14,6 +14,38 @@ import {
 } from "react-native";
 import { supabase } from "../services/supabase";
 
+type RecoveryTokens = {
+  accessToken: string;
+  refreshToken: string;
+};
+
+const getRecoveryTokensFromUrl = (url: string): RecoveryTokens | null => {
+  const [, hashPart = ""] = url.split("#");
+  const hashParams = new URLSearchParams(hashPart);
+
+  const parsed = Linking.parse(url);
+  const queryAccessToken =
+    typeof parsed.queryParams?.access_token === "string"
+      ? parsed.queryParams.access_token
+      : null;
+  const queryRefreshToken =
+    typeof parsed.queryParams?.refresh_token === "string"
+      ? parsed.queryParams.refresh_token
+      : null;
+
+  const accessToken = hashParams.get("access_token") ?? queryAccessToken;
+  const refreshToken = hashParams.get("refresh_token") ?? queryRefreshToken;
+
+  if (!accessToken || !refreshToken) {
+    return null;
+  }
+
+  return {
+    accessToken,
+    refreshToken,
+  };
+};
+
 export default function ResetPassword() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -25,8 +57,9 @@ export default function ResetPassword() {
   useEffect(() => {
     let mounted = true;
 
-    const hydrateSession = async () => {
+    const syncFromSession = async () => {
       const { data } = await supabase.auth.getSession();
+
       if (!mounted) {
         return;
       }
@@ -37,14 +70,43 @@ export default function ResetPassword() {
       }
     };
 
-    hydrateSession();
+    const applyRecoveryUrl = async (url: string) => {
+      console.log("INCOMING_DEEPLINK", url);
 
-    const linkSub = Linking.addEventListener("url", ({ url }) => {
-      console.log("DEEPLINK", url);
+      const tokens = getRecoveryTokensFromUrl(url);
+      if (!tokens) {
+        await syncFromSession();
+        return;
+      }
+
+      const { error } = await supabase.auth.setSession({
+        access_token: tokens.accessToken,
+        refresh_token: tokens.refreshToken,
+      });
+
+      if (error) {
+        console.log("RESET_SET_SESSION_ERROR", error.message);
+      }
+
+      await syncFromSession();
+    };
+
+    const initialize = async () => {
+      const initialUrl = await Linking.getInitialURL();
+
+      if (initialUrl) {
+        await applyRecoveryUrl(initialUrl);
+      } else {
+        await syncFromSession();
+      }
+    };
+
+    const linkSubscription = Linking.addEventListener("url", ({ url }) => {
+      void applyRecoveryUrl(url);
     });
 
     const {
-      data: { subscription },
+      data: { subscription: authSubscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
       console.log("AUTH_EVENT", event);
 
@@ -54,10 +116,12 @@ export default function ResetPassword() {
       }
     });
 
+    void initialize();
+
     return () => {
       mounted = false;
-      linkSub.remove();
-      subscription.unsubscribe();
+      linkSubscription.remove();
+      authSubscription.unsubscribe();
     };
   }, []);
 
@@ -97,7 +161,7 @@ export default function ResetPassword() {
       return;
     }
 
-    Alert.alert("Password updated. You will be signed out.");
+    Alert.alert("Password updated. Signed out.");
     await supabase.auth.signOut();
     setLoading(false);
     router.replace("/login?reason=password_reset");
