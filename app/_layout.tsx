@@ -9,6 +9,11 @@ function AppStack() {
   const { loading } = useAuth();
 
   useEffect(() => {
+    const logInitialUrl = async () => {
+      const initialUrl = await Linking.getInitialURL();
+
+      if (initialUrl) {
+        console.log("INCOMING_DEEPLINK", initialUrl);
     let isMounted = true;
 
     const logInitialUrl = async () => {
@@ -22,6 +27,10 @@ function AppStack() {
     logInitialUrl();
 
     const subscription = Linking.addEventListener("url", ({ url }) => {
+      console.log("INCOMING_DEEPLINK", url);
+    });
+
+    return () => {
       console.log("[deep-link] received URL", url);
     });
 
