@@ -35,6 +35,7 @@ export default function ClubProfileScreen() {
       : null;
 
   const { isEditing, startEdit, cancelEdit } = useEditMode();
+  const isStudent = user?.role === "student";
 
   const [isManager, setIsManager] = useState(false);
   const [isCheckingPermission, setIsCheckingPermission] = useState(true);
@@ -194,16 +195,20 @@ export default function ClubProfileScreen() {
         placeholderTextColor="#6b7280"
       />
 
-      <Text style={[styles.fieldLabel, { color: theme.text }]}>Logo URL</Text>
-      <TextInput
-        style={[styles.input, { color: theme.text, borderColor: "#9ca3af" }]}
-        value={clubLogoUrl}
-        editable={isEditing && isManager}
-        onChangeText={setClubLogoUrl}
-        autoCapitalize="none"
-        placeholder="https://..."
-        placeholderTextColor="#6b7280"
-      />
+      {!isStudent && (
+        <>
+          <Text style={[styles.fieldLabel, { color: theme.text }]}>Logo URL</Text>
+          <TextInput
+            style={[styles.input, { color: theme.text, borderColor: "#9ca3af" }]}
+            value={clubLogoUrl}
+            editable={isEditing && isManager}
+            onChangeText={setClubLogoUrl}
+            autoCapitalize="none"
+            placeholder="https://..."
+            placeholderTextColor="#6b7280"
+          />
+        </>
+      )}
 
       {isManager &&
         (isEditing ? (
