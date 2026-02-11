@@ -1,11 +1,10 @@
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabase";
 import {
-    canViewAttendance,
     isFacultyView,
     isStudentView,
 } from "../utils/permissions";
@@ -48,11 +47,7 @@ export default function AttendanceHistoryScreen() {
       return;
     }
 
-    if (!canViewAttendance(user)) {
-      // 🚫 Students redirected away
-      router.replace("/student-home");
-    }
-  }, [user, loading]);
+  }, [user, loading, router]);
 
   /* ===============================
      📦 FETCH EVENTS (FACULTY/PRESIDENT & STUDENTS)
@@ -63,7 +58,7 @@ export default function AttendanceHistoryScreen() {
     } else if (user && isStudentView(user)) {
       fetchStudentAttendanceHistory();
     }
-  }, [user]);
+  }, [user, fetchStudentAttendanceHistory]);
 
   const fetchEvents = async () => {
     try {
@@ -92,7 +87,7 @@ export default function AttendanceHistoryScreen() {
   /* ===============================
      📦 FETCH STUDENT ATTENDANCE HISTORY
      =============================== */
-  const fetchStudentAttendanceHistory = async () => {
+  const fetchStudentAttendanceHistory = useCallback(async () => {
     if (!user) return;
 
     try {
@@ -134,7 +129,7 @@ export default function AttendanceHistoryScreen() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [user]);
 
   /* ===============================
      📦 FETCH ATTENDANCE FOR EVENT
@@ -193,7 +188,7 @@ export default function AttendanceHistoryScreen() {
     setAttendanceData([]);
   };
 
-  if (loading || !user || !canViewAttendance(user)) {
+  if (loading || !user) {
     return null;
   }
 
@@ -211,7 +206,9 @@ export default function AttendanceHistoryScreen() {
       <Text style={styles.heading}>Attendance History</Text>
 
       {/* Student UI */}
-      {studentView && <AttendanceList events={studentEvents} />}
+      {studentView && (
+        <AttendanceList events={studentEvents} isLoading={isLoading} />
+      )}
 
       {/* Faculty / President UI - Event List */}
       {facultyView && !selectedEvent && (
