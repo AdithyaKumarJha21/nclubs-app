@@ -40,7 +40,6 @@ export default function EventsListScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [sortOption, setSortOption] = useState<SortOption>("date-asc");
-  const [showAllEvents, setShowAllEvents] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -52,12 +51,12 @@ export default function EventsListScreen() {
 
   useEffect(() => {
     fetchEvents();
-  }, [showAllEvents]);
+  }, []);
 
   const fetchEvents = async () => {
     try {
       setLoading(true);
-      const data = await getEventsForStudent({ includePast: showAllEvents });
+      const data = await getEventsForStudent();
       setEvents(data);
     } catch (err) {
       console.error("Unexpected error:", err);
@@ -174,41 +173,6 @@ export default function EventsListScreen() {
           <Text style={[styles.controlText, { color: isDark ? "#fff" : "#0f172a" }]}>Sort: {currentSortLabel}</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[
-            styles.controlButton,
-            { backgroundColor: isDark ? "#2a2a2a" : "#f1f5f9" },
-            !showAllEvents && styles.controlButtonActive,
-          ]}
-          onPress={() => setShowAllEvents(false)}
-        >
-          <Text
-            style={[
-              styles.controlText,
-              { color: !showAllEvents ? "#fff" : isDark ? "#fff" : "#0f172a" },
-            ]}
-          >
-            Upcoming Events
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[
-            styles.controlButton,
-            { backgroundColor: isDark ? "#2a2a2a" : "#f1f5f9" },
-            showAllEvents && styles.controlButtonActive,
-          ]}
-          onPress={() => setShowAllEvents(true)}
-        >
-          <Text
-            style={[
-              styles.controlText,
-              { color: showAllEvents ? "#fff" : isDark ? "#fff" : "#0f172a" },
-            ]}
-          >
-            All Events
-          </Text>
-        </TouchableOpacity>
       </View>
 
       {noSearchResults ? (
@@ -227,9 +191,7 @@ export default function EventsListScreen() {
             { color: isDark ? "#aaa" : "#666" },
           ]}
         >
-          {showAllEvents
-            ? "No events available yet."
-            : "No upcoming events scheduled. Check back soon!"}
+          No upcoming events scheduled. Check back soon!
         </Text>
       ) : (
         <FlatList
