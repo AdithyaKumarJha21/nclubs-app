@@ -5,7 +5,6 @@ import ClubCard from "../components/ClubCard";
 import ClubSearchBar from "../components/ClubSearchBar";
 import ClubSearchEmptyState from "../components/ClubSearchEmptyState";
 import { useAuth } from "../context/AuthContext";
-import { getMyClubs } from "../services/assignments";
 import { supabase } from "../services/supabase";
 import { useTheme } from "../theme/ThemeContext";
 
@@ -45,17 +44,7 @@ export default function ClubsScreen() {
         return;
       }
 
-      let visibleClubs: Club[] = (data ?? []) as Club[];
-
-      if (user?.role === "president" || user?.role === "faculty") {
-        const myClubIds = await getMyClubs(user);
-
-        if (!isActive) return;
-
-        visibleClubs = visibleClubs.filter((club) => myClubIds.includes(club.id));
-      }
-
-      setClubs(visibleClubs);
+      setClubs((data ?? []) as Club[]);
       setLoading(false);
     };
 
