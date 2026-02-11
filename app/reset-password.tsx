@@ -14,6 +14,30 @@ import {
 } from "react-native";
 import { supabase } from "../services/supabase";
 
+type RecoveryTokens = {
+  accessToken: string;
+  refreshToken: string;
+};
+
+const getRecoveryTokensFromUrl = (url: string): RecoveryTokens | null => {
+  const [base, hashPart] = url.split("#");
+  const queryPart = base.includes("?") ? base.split("?")[1] : "";
+
+  const hashParams = new URLSearchParams(hashPart ?? "");
+  const queryParams = new URLSearchParams(queryPart);
+
+  const accessToken =
+    hashParams.get("access_token") ?? queryParams.get("access_token");
+  const refreshToken =
+    hashParams.get("refresh_token") ?? queryParams.get("refresh_token");
+
+  if (!accessToken || !refreshToken) {
+    return null;
+  }
+
+  return { accessToken, refreshToken };
+};
+
 export default function ResetPassword() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -26,7 +50,23 @@ export default function ResetPassword() {
     let mounted = true;
 
     const hydrateSession = async () => {
+      const initialUrl = await Linking.getInitialURL();
+
+      if (initialUrl) {
+        console.log("INCOMING_DEEPLINK", initialUrl);
+
+        const tokens = getRecoveryTokensFromUrl(initialUrl);
+
+        if (tokens) {
+          await supabase.auth.setSession({
+            access_token: tokens.accessToken,
+            refresh_token: tokens.refreshToken,
+          });
+        }
+      }
+
       const { data } = await supabase.auth.getSession();
+
       if (!mounted) {
         return;
       }
@@ -39,8 +79,17 @@ export default function ResetPassword() {
 
     hydrateSession();
 
-    const linkSub = Linking.addEventListener("url", ({ url }) => {
-      console.log("DEEPLINK", url);
+    const linkSub = Linking.addEventListener("url", async ({ url }) => {
+      console.log("INCOMING_DEEPLINK", url);
+
+      const tokens = getRecoveryTokensFromUrl(url);
+
+      if (tokens) {
+        await supabase.auth.setSession({
+          access_token: tokens.accessToken,
+          refresh_token: tokens.refreshToken,
+        });
+      }
     });
 
     const {
@@ -97,7 +146,7 @@ export default function ResetPassword() {
       return;
     }
 
-    Alert.alert("Password updated. You will be signed out.");
+    Alert.alert("Password updated. Signed out.");
     await supabase.auth.signOut();
     setLoading(false);
     router.replace("/login?reason=password_reset");

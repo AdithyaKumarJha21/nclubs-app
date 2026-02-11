@@ -1,10 +1,32 @@
+import * as Linking from "expo-linking";
 import { Stack } from "expo-router";
+import { useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 import { ThemeProvider } from "../theme/ThemeContext";
 
 function AppStack() {
   const { loading } = useAuth();
+
+  useEffect(() => {
+    const logInitialUrl = async () => {
+      const initialUrl = await Linking.getInitialURL();
+
+      if (initialUrl) {
+        console.log("INCOMING_DEEPLINK", initialUrl);
+      }
+    };
+
+    logInitialUrl();
+
+    const subscription = Linking.addEventListener("url", ({ url }) => {
+      console.log("INCOMING_DEEPLINK", url);
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
 
   // 🔐 CRITICAL: block rendering until auth resolved
   if (loading) {

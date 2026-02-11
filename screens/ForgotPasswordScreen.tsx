@@ -1,5 +1,4 @@
 import * as Linking from "expo-linking";
-import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
   Alert,
@@ -14,7 +13,6 @@ import {
 import { supabase } from "../services/supabase";
 
 export default function ForgotPasswordScreen() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -31,7 +29,7 @@ export default function ForgotPasswordScreen() {
       return;
     }
 
-    const redirectTo = "nclubs://reset-password";
+    const redirectTo = Linking.createURL("/reset-password");
 
     if (__DEV__) {
       console.log("FORGOT_PASSWORD_REDIRECT", redirectTo, Linking.parse(redirectTo));
@@ -49,12 +47,14 @@ export default function ForgotPasswordScreen() {
 
     setLoading(false);
 
-    if (error) {
-      Alert.alert("Error", error.message);
-      return;
+    if (error && __DEV__) {
+      console.log("FORGOT_PASSWORD_ERROR", error.message);
     }
 
-    Alert.alert("Check email for reset link.");
+    Alert.alert(
+      "Check your email",
+      "If an account exists for this email, a reset link has been sent.",
+    );
     setEmail("");
   };
 
@@ -89,7 +89,9 @@ export default function ForgotPasswordScreen() {
         {__DEV__ ? (
           <TouchableOpacity
             style={styles.devLinkButton}
-            onPress={() => router.push("/reset-password")}
+            onPress={() =>
+              Linking.openURL(Linking.createURL("/reset-password"))
+            }
           >
             <Text style={styles.devLinkButtonText}>Open reset page (dev)</Text>
           </TouchableOpacity>
