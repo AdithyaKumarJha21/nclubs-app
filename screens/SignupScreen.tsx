@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
@@ -111,9 +112,20 @@ export default function SignupScreen() {
     }
 
     // 1) CREATE AUTH USER
+    const emailRedirectTo = Linking.createURL("/auth-callback");
+    console.log("[auth] signUp emailRedirectTo", emailRedirectTo);
+
     const { data, error } = await supabase.auth.signUp({
       email: email.trim(),
       password,
+      options: {
+        emailRedirectTo,
+      },
+    });
+
+    console.log("[auth] signUp session returned", {
+      hasSession: Boolean(data?.session),
+      userId: data?.user?.id,
     });
 
     if (error) {
@@ -146,10 +158,14 @@ export default function SignupScreen() {
       return;
     }
 
-    Alert.alert(
-      "Signup successful 🎉",
-      "Please check your email to confirm your account."
-    );
+    if (!data.session) {
+      Alert.alert(
+        "Signup successful 🎉",
+        "Check your email to confirm your account."
+      );
+    } else {
+      Alert.alert("Signup successful 🎉", "You can now log in.");
+    }
 
     setLoading(false);
   };
