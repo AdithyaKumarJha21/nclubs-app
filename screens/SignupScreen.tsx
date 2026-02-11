@@ -122,10 +122,6 @@ export default function SignupScreen() {
       password,
       options: {
         emailRedirectTo,
-        data: {
-          name,
-          usn,
-        },
       },
     });
 
@@ -147,10 +143,23 @@ export default function SignupScreen() {
     }
 
     if (!data.session) {
-      console.log("[auth] confirmation email requested for", normalizedEmail);
+      const { error: resendError } = await supabase.auth.resend({
+        type: "signup",
+        email: normalizedEmail,
+        options: {
+          emailRedirectTo,
+        },
+      });
+
+      if (resendError) {
+        console.warn("[auth] resend signup email failed", resendError.message);
+      } else {
+        console.log("[auth] resend signup email triggered", normalizedEmail);
+      }
+
       Alert.alert(
         "Signup successful 🎉",
-        "Check your email to confirm your account. If you do not receive it in a minute, use Resend confirmation on the login screen."
+        "Check your email to confirm your account."
       );
     } else {
       // This can happen when email confirmation is disabled in Supabase.
@@ -177,6 +186,15 @@ export default function SignupScreen() {
         return;
       }
 
+      Alert.alert("Signup successful 🎉", "You can now log in.");
+    }
+
+    if (!data.session) {
+      Alert.alert(
+        "Signup successful 🎉",
+        "Check your email to confirm your account."
+      );
+    } else {
       Alert.alert("Signup successful 🎉", "You can now log in.");
     }
 

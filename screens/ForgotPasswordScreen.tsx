@@ -1,5 +1,4 @@
 import * as Linking from "expo-linking";
-import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
   Alert,
@@ -14,7 +13,6 @@ import {
 import { supabase } from "../services/supabase";
 
 export default function ForgotPasswordScreen() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -31,11 +29,8 @@ export default function ForgotPasswordScreen() {
       return;
     }
 
-    const redirectTo = "nclubs://reset-password";
-
-    if (__DEV__) {
-      console.log("FORGOT_PASSWORD_REDIRECT", redirectTo, Linking.parse(redirectTo));
-    }
+    const redirectTo = Linking.createURL("/reset-password");
+    console.log("FORGOT_PASSWORD_REDIRECT", redirectTo);
 
     setLoading(true);
 
@@ -43,18 +38,19 @@ export default function ForgotPasswordScreen() {
       redirectTo,
     });
 
-    if (__DEV__) {
-      console.log("FORGOT_PASSWORD_RESULT", { error });
-    }
-
+    console.log("FORGOT_PASSWORD_RESULT", { hasError: Boolean(error) });
     setLoading(false);
 
     if (error) {
-      Alert.alert("Error", error.message);
+      console.log("FORGOT_PASSWORD_ERROR", error.message);
+      Alert.alert(
+        "Unable to send reset email",
+        "Please try again in a moment.",
+      );
       return;
     }
 
-    Alert.alert("Check email for reset link.");
+    Alert.alert("Reset link sent. Open the email to continue.");
     setEmail("");
   };
 
@@ -85,15 +81,6 @@ export default function ForgotPasswordScreen() {
             {loading ? "Sending..." : "Send Reset Link"}
           </Text>
         </TouchableOpacity>
-
-        {__DEV__ ? (
-          <TouchableOpacity
-            style={styles.devLinkButton}
-            onPress={() => router.push("/reset-password")}
-          >
-            <Text style={styles.devLinkButtonText}>Open reset page (dev)</Text>
-          </TouchableOpacity>
-        ) : null}
       </View>
     </KeyboardAvoidingView>
   );
@@ -136,14 +123,5 @@ const styles = StyleSheet.create({
     color: "white",
     fontWeight: "600",
     fontSize: 16,
-  },
-  devLinkButton: {
-    marginTop: 12,
-    alignItems: "center",
-    paddingVertical: 6,
-  },
-  devLinkButtonText: {
-    color: "#1d4ed8",
-    fontWeight: "600",
   },
 });
