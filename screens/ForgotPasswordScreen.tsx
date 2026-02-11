@@ -29,9 +29,7 @@ export default function ForgotPasswordScreen() {
       return;
     }
 
-    const redirectTo = Linking.createURL("reset-password", {
-      scheme: "nclubs",
-    });
+    const redirectTo = Linking.createURL("/reset-password");
     console.log("FORGOT_PASSWORD_REDIRECT", redirectTo);
 
     setLoading(true);
@@ -47,15 +45,12 @@ export default function ForgotPasswordScreen() {
       console.log("FORGOT_PASSWORD_ERROR", error.message);
       Alert.alert(
         "Unable to send reset email",
-        "Please try again in a moment. If this keeps happening, confirm your Supabase Redirect URL settings include nclubs://reset-password.",
+        "Please try again in a moment.",
       );
       return;
     }
 
-    Alert.alert(
-      "Check your email",
-      "If an account exists for this email, a reset link has been sent.",
-    );
+    Alert.alert("Reset link sent. Open the email to continue.");
     setEmail("");
   };
 
@@ -86,17 +81,6 @@ export default function ForgotPasswordScreen() {
             {loading ? "Sending..." : "Send Reset Link"}
           </Text>
         </TouchableOpacity>
-
-        {__DEV__ ? (
-          <TouchableOpacity
-            style={styles.devLinkButton}
-            onPress={() =>
-              Linking.openURL(Linking.createURL("/reset-password"))
-            }
-          >
-            <Text style={styles.devLinkButtonText}>Open reset page (dev)</Text>
-          </TouchableOpacity>
-        ) : null}
       </View>
     </KeyboardAvoidingView>
   );
@@ -139,14 +123,5 @@ const styles = StyleSheet.create({
     color: "white",
     fontWeight: "600",
     fontSize: 16,
-  },
-  devLinkButton: {
-    marginTop: 12,
-    alignItems: "center",
-    paddingVertical: 6,
-  },
-  devLinkButtonText: {
-    color: "#1d4ed8",
-    fontWeight: "600",
   },
 });
