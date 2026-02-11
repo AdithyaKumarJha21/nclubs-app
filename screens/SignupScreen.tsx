@@ -111,12 +111,14 @@ export default function SignupScreen() {
       return;
     }
 
+    const normalizedEmail = email.trim().toLowerCase();
+
     // 1) CREATE AUTH USER
     const emailRedirectTo = Linking.createURL("/auth-callback");
     console.log("[auth] signUp emailRedirectTo", emailRedirectTo);
 
     const { data, error } = await supabase.auth.signUp({
-      email: email.trim(),
+      email: normalizedEmail,
       password,
       options: {
         emailRedirectTo,
@@ -140,22 +142,51 @@ export default function SignupScreen() {
       return;
     }
 
-    // 2) UPDATE EXISTING PROFILE (created by backend trigger)
-    const { error: profileError } = await supabase
-      .from("profiles")
-      .update({
-        name,
-        usn,
-        email: email.trim(),
-      })
-      .eq("id", data.user.id);
+    if (!data.session) {
+      const { error: resendError } = await supabase.auth.resend({
+        type: "signup",
+        email: normalizedEmail,
+        options: {
+          emailRedirectTo,
+        },
+      });
 
-    console.log("Profile update result", { userId: data.user.id });
+      if (resendError) {
+        console.warn("[auth] resend signup email failed", resendError.message);
+      } else {
+        console.log("[auth] resend signup email triggered", normalizedEmail);
+      }
 
-    if (profileError) {
-      Alert.alert("Signup failed", profileError.message);
-      setLoading(false);
-      return;
+      Alert.alert(
+        "Signup successful 🎉",
+        "Check your email to confirm your account."
+      );
+    } else {
+      // This can happen when email confirmation is disabled in Supabase.
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .update({
+          name,
+          usn,
+          email: normalizedEmail,
+        })
+        .eq("id", data.user.id);
+
+      console.log("Profile update result", {
+        userId: data.user.id,
+        hasError: Boolean(profileError),
+      });
+
+      if (profileError) {
+        Alert.alert(
+          "Signup successful 🎉",
+          "Your account was created. Please log in to complete profile setup."
+        );
+        setLoading(false);
+        return;
+      }
+
+      Alert.alert("Signup successful 🎉", "You can now log in.");
     }
 
     if (!data.session) {
