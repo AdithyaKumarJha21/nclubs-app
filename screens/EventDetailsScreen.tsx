@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import EventRegistrationModal from "../components/EventRegistrationModal";
 import { useAuth } from "../context/AuthContext";
-import { hasMarkedAttendance, markAttendance } from "../services/attendance";
+import { hasMarkedAttendance, submitAttendance } from "../services/attendance";
 import { EventDetail, getEventById } from "../services/events";
 import {
   EventRegistration,
@@ -21,7 +21,7 @@ import {
   isEventRegisteredLocally,
 } from "../services/registrations";
 import { useTheme } from "../theme/ThemeContext";
-import { formatTimeLocal } from "../utils/timeWindow";
+import { formatTimeLocal, isWithinEventWindow } from "../utils/timeWindow";
 
 export default function EventDetailsScreen() {
   const router = useRouter();
@@ -95,6 +95,11 @@ export default function EventDetailsScreen() {
   }, [resolvedEventId, user?.id, user?.email, hasPrompted]);
 
   const isRegistered = !!registration;
+  const isInEventWindow = useMemo(
+    () => (event ? isWithinEventWindow(event.start_time, event.end_time) : false),
+    [event]
+  );
+  const canSubmitAttendance = isRegistered && !!event?.qr_enabled && isInEventWindow;
 
   const attendanceStatus = useMemo(() => {
     if (!event) return null;
@@ -106,6 +111,13 @@ export default function EventDetailsScreen() {
       } as const;
     }
 
+    if (!isInEventWindow) {
+      return {
+        enabled: false,
+        message: "Attendance is available only during the event time window.",
+      } as const;
+    }
+
     if (attendanceMarked) {
       return {
         enabled: false,
@@ -114,10 +126,10 @@ export default function EventDetailsScreen() {
     }
 
     return {
-      enabled: true,
+      enabled: canSubmitAttendance,
       message: "Attendance is enabled. You can submit once.",
     } as const;
-  }, [attendanceMarked, event]);
+  }, [attendanceMarked, canSubmitAttendance, event, isInEventWindow]);
 
   const handleRegistrationSuccess = (newRegistration: EventRegistration) => {
     setRegistration(newRegistration);
@@ -141,28 +153,56 @@ export default function EventDetailsScreen() {
   const handleSubmitAttendance = async () => {
     if (!event || !registration || submittingAttendance) return;
 
+    const now = new Date();
+
+    console.log("📸 Attendance submit precheck", {
+      eventId: event.id,
+      userId: user?.id ?? null,
+      isRegistered,
+      qr_enabled: event.qr_enabled,
+      start_time: event.start_time,
+      end_time: event.end_time,
+      now: now.toISOString(),
+      canSubmitAttendance,
+    });
+
+    if (!canSubmitAttendance) {
+      Alert.alert("Attendance unavailable", attendanceStatus?.message ?? "Attendance cannot be submitted right now.");
+      return;
+    }
+
     try {
       setSubmittingAttendance(true);
-      const result = await markAttendance(event.id);
+      const result = await submitAttendance(event.id);
 
-      if (result.status === "already") {
-        setAttendanceMarked(true);
-        Alert.alert("Attendance already marked", "You can submit attendance only once.");
+      if (result.ok && result.already) {
+        const refreshedMarked = await hasMarkedAttendance(event.id);
+        setAttendanceMarked(refreshedMarked);
         setShowAttendanceModal(false);
+        Alert.alert("Attendance already marked", "Attendance already marked.");
         return;
       }
 
-      if (result.status === "forbidden") {
-        Alert.alert("Not allowed", "You are not allowed to mark attendance right now.");
+      if (result.ok) {
+        const refreshedMarked = await hasMarkedAttendance(event.id);
+        setAttendanceMarked(refreshedMarked);
+        setShowAttendanceModal(false);
+        Alert.alert("Success", "Attendance marked successfully.");
         return;
       }
 
-      setAttendanceMarked(true);
-      setShowAttendanceModal(false);
-      Alert.alert("Success", "Attendance submitted successfully ✅");
+      if (!result.ok && "code" in result && result.code === "42501") {
+        Alert.alert("Attendance unavailable", result.message);
+        return;
+      }
+
+      if (!result.ok) {
+        const failedResult = result as Extract<Awaited<ReturnType<typeof submitAttendance>>, { ok: false }>;
+        Alert.alert("Error", failedResult.message);
+      }
     } catch (error) {
       console.error("Attendance submit failed:", error);
-      Alert.alert("Error", "Failed to submit attendance");
+      Alert.alert("Error", error instanceof Error ? error.message : "Unable to submit attendance.");
     } finally {
       setSubmittingAttendance(false);
     }
