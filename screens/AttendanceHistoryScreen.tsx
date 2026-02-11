@@ -3,6 +3,10 @@ import { useCallback, useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { useAuth } from "../context/AuthContext";
+import {
+  AttendanceHistoryRow,
+  getAttendanceHistoryForClub,
+} from "../services/attendanceHistory";
 import { supabase } from "../services/supabase";
 import {
     isFacultyView,
@@ -16,29 +20,6 @@ import AttendanceStudentList, {
 } from "../components/AttendanceStudentList";
 import EventList, { EventListItem } from "../components/EventList";
 
-type AttendanceProfile = {
-  id: string;
-  name: string | null;
-  usn: string | null;
-  email: string | null;
-};
-
-type AttendanceEvent = {
-  id: string;
-  title: string;
-};
-
-type AttendanceRow = {
-  id: string;
-  created_at: string | null;
-  scanned_at?: string | null;
-  event_id: string;
-  club_id: string;
-  student_id: string;
-  events: AttendanceEvent | AttendanceEvent[] | null;
-  profiles: AttendanceProfile | AttendanceProfile[] | null;
-};
-
 type StudentAttendanceEvent = {
   id: string;
   title: string;
@@ -48,13 +29,6 @@ type StudentAttendanceEvent = {
 
 type EventScan = {
   event_id: string;
-};
-
-type MinimalProfile = {
-  id: string;
-  name: string | null;
-  usn: string | null;
-  email: string | null;
 };
 
 /**
@@ -95,7 +69,7 @@ export default function AttendanceHistoryScreen() {
       setIsLoading(true);
       const { data, error } = await supabase
         .from("events")
-        .select("id, title, event_date")
+        .select("id, title, event_date, club_id")
         .order("event_date", { ascending: false });
 
       if (error) throw error;
@@ -104,6 +78,7 @@ export default function AttendanceHistoryScreen() {
         id: event.id,
         title: event.title,
         date: event.event_date,
+        club_id: event.club_id,
       }));
 
       setEvents(formattedEvents);
@@ -177,90 +152,29 @@ export default function AttendanceHistoryScreen() {
      =============================== */
   const handleSelectEvent = async (event: EventListItem) => {
     setSelectedEvent(event);
-    await fetchAttendanceForEvent(event.id);
+    await fetchAttendanceForEvent(event.id, event.club_id);
   };
 
-  const fetchAttendanceForEvent = async (eventId: string) => {
+  const fetchAttendanceForEvent = async (eventId: string, clubId?: string) => {
+    if (!clubId) {
+      console.error("Missing club_id for selected event:", eventId);
+      setAttendanceData([]);
+      return;
+    }
+
     try {
       setIsLoading(true);
 
-      // Get attendance records for this event
-      const { data, error } = await supabase
-        .from("attendance")
-        .select(
-          `
-          id,
-          created_at,
-          scanned_at,
-          event_id,
-          club_id,
-          student_id,
-          events (
-            id,
-            title
-          ),
-          profiles:student_id (
-            id,
-            name,
-            email,
-            usn
-          )
-        `
-        )
-        .eq("event_id", eventId)
-        .order("created_at", { ascending: true });
-
-      if (error) throw error;
-
-      const attendanceRows: AttendanceRow[] = (data as AttendanceRow[] | null) || [];
-
-      const initialProfileMap = new Map<string, MinimalProfile>();
-      for (const row of attendanceRows) {
-        const joinedProfile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
-        if (joinedProfile?.id) {
-          initialProfileMap.set(row.student_id, joinedProfile);
-        }
-      }
-
-      const missingStudentIds = attendanceRows
-        .map((row) => row.student_id)
-        .filter((studentId) => !initialProfileMap.has(studentId));
-
-      if (missingStudentIds.length > 0) {
-        const uniqueMissingStudentIds = Array.from(new Set(missingStudentIds));
-        const { data: fallbackProfiles, error: profileError } = await supabase
-          .from("profiles")
-          .select("id, name, usn, email")
-          .in("id", uniqueMissingStudentIds);
-
-        if (profileError) {
-          console.error("Error fetching fallback profiles:", {
-            code: profileError.code,
-            message: profileError.message,
-          });
-        } else {
-          for (const profile of (fallbackProfiles as MinimalProfile[] | null) || []) {
-            initialProfileMap.set(profile.id, profile);
-          }
-        }
-      }
-
-      const students: AttendanceStudent[] = attendanceRows.map((attendanceRow) => {
-        const rowProfile = Array.isArray(attendanceRow.profiles)
-          ? attendanceRow.profiles[0]
-          : attendanceRow.profiles;
-        const mergedProfile = rowProfile || initialProfileMap.get(attendanceRow.student_id) || null;
-        const event = Array.isArray(attendanceRow.events)
-          ? attendanceRow.events[0]
-          : attendanceRow.events;
-
+      const attendanceRows = await getAttendanceHistoryForClub(clubId);
+      const students: AttendanceStudent[] = attendanceRows
+        .filter((attendanceRow: AttendanceHistoryRow) => attendanceRow.event_id === eventId)
+        .map((attendanceRow: AttendanceHistoryRow) => {
         return {
-          id: attendanceRow.id,
-          name: mergedProfile?.name ?? "Unknown student",
-          email: mergedProfile?.email ?? undefined,
-          usn: mergedProfile?.usn ?? "-",
-          eventTitle: event?.title ?? selectedEvent?.title ?? "Untitled event",
-          scan_time: attendanceRow.created_at ?? attendanceRow.scanned_at ?? undefined,
+          id: attendanceRow.attendance_id,
+          name: attendanceRow.student_name ?? "Unknown student",
+          usn: attendanceRow.student_usn ?? "-",
+          eventTitle: attendanceRow.event_title ?? selectedEvent?.title ?? "Untitled event",
+          scan_time: attendanceRow.scanned_at ?? undefined,
         };
       });
 
@@ -268,20 +182,12 @@ export default function AttendanceHistoryScreen() {
         (student) => student.name !== "Unknown student"
       ).length;
 
-      console.log("Attendance rows fetched:", attendanceRows.length);
+      console.log("Attendance rows fetched:", students.length);
       console.log("Attendance rows with resolved profiles.name:", resolvedProfilesCount);
 
       setAttendanceData(students);
     } catch (error) {
-      if (typeof error === "object" && error !== null && "code" in error && "message" in error) {
-        const supabaseError = error as { code?: string; message?: string };
-        console.error("Error fetching attendance:", {
-          code: supabaseError.code,
-          message: supabaseError.message,
-        });
-      } else {
-        console.error("Error fetching attendance:", error);
-      }
+      console.error("Error fetching attendance:", error);
       setAttendanceData([]);
     } finally {
       setIsLoading(false);
