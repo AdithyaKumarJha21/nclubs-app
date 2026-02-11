@@ -18,20 +18,27 @@ export const markAttendance = async (eventId: string): Promise<AttendanceResult>
 
   console.log("📸 Marking attendance", { eventId, userId: user.id });
 
-  const { data, error } = await supabase
-    .from("attendance")
-    .insert({
-      event_id: eventId,
-      student_id: user.id,
-      scanned_at: new Date().toISOString(),
-    })
-    .select("event_id, student_id")
-    .single();
+  const payload = {
+    event_id: eventId,
+    student_id: user.id,
+    scanned_at: new Date().toISOString(),
+  };
 
-  console.log("🧾 Attendance insert result", { data, error });
+  const { error } = await supabase
+    .from("attendance")
+    .insert(payload);
+
+  console.log("🧾 Attendance insert result", { payload, error });
 
   if (error) {
-    if (error.code === "23505") {
+    const normalizedMessage = error.message?.toLowerCase() ?? "";
+
+    if (
+      error.code === "23505" ||
+      normalizedMessage.includes("duplicate key") ||
+      normalizedMessage.includes("unique constraint") ||
+      normalizedMessage.includes("already exists")
+    ) {
       return { status: "already" };
     }
 
