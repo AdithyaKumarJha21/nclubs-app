@@ -172,7 +172,7 @@ export default function AttendanceHistoryScreen() {
         return {
           id: attendanceRow.attendance_id,
           name: attendanceRow.student_name ?? "Unknown student",
-          usn: attendanceRow.student_usn ?? "-",
+          student_usn: attendanceRow.student_usn,
           eventTitle: attendanceRow.event_title ?? selectedEvent?.title ?? "Untitled event",
           scan_time: attendanceRow.scanned_at ?? undefined,
         };
