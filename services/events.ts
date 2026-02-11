@@ -224,6 +224,10 @@ export const generateEventQr = async (eventId: string): Promise<EventRow> => {
   return data as EventRow;
 };
 
+export const enableEventAttendance = async (eventId: string): Promise<EventRow> => {
+  return generateEventQr(eventId);
+};
+
 export const disableEventQr = async (eventId: string): Promise<EventRow> => {
   const {
     data: { user },
@@ -251,6 +255,10 @@ export const disableEventQr = async (eventId: string): Promise<EventRow> => {
   }
 
   return data as EventRow;
+};
+
+export const disableEventAttendance = async (eventId: string): Promise<EventRow> => {
+  return disableEventQr(eventId);
 };
 
 export const createEvent = async (input: CreateEventInput): Promise<void> => {
