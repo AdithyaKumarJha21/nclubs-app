@@ -111,3 +111,49 @@ export const sendNotification = async ({
 
   return data;
 };
+
+export const deleteNotification = async (
+  notificationId: string
+): Promise<{ ok: true } | { ok: false; message: string; code?: string }> => {
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return {
+      ok: false,
+      code: authError?.code ?? "401",
+      message: "Please login again.",
+    };
+  }
+
+  const { data, error } = await supabase
+    .from("notifications")
+    .delete()
+    .eq("id", notificationId)
+    .select("id");
+
+  console.log("🗑️ deleteNotification result", {
+    notificationId,
+    dataLength: data?.length ?? 0,
+    error,
+  });
+
+  if (error) {
+    return {
+      ok: false,
+      code: error.code,
+      message: error.message || "Failed to delete notification.",
+    };
+  }
+
+  if (!data || data.length === 0) {
+    return {
+      ok: false,
+      message: "Not deleted (not found or not allowed)",
+    };
+  }
+
+  return { ok: true };
+};

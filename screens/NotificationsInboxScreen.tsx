@@ -12,6 +12,7 @@ import {
     View,
 } from "react-native";
 import { useAuth } from "../context/AuthContext";
+import { deleteNotification } from "../services/notifications";
 import { supabase } from "../services/supabase";
 import { useTheme } from "../theme/ThemeContext";
 
@@ -89,21 +90,21 @@ export default function NotificationsInboxScreen() {
           text: "Delete",
           onPress: async () => {
             try {
-              const { error } = await supabase
-                .from("notifications")
-                .delete()
-                .eq("id", notificationId);
+              const result = await deleteNotification(notificationId);
 
-              if (error) {
-                Alert.alert("Error", "Failed to delete notification");
-                console.error("Delete error:", error);
+              if (result.ok) {
+                await fetchAndFilterNotifications();
+                Alert.alert("Success", "Notification deleted");
                 return;
               }
 
-              setNotifications((prev) =>
-                prev.filter((n) => n.id !== notificationId)
-              );
-              Alert.alert("Success", "Notification deleted");
+              if (result.code === "42501") {
+                Alert.alert("Error", "Not allowed to delete this notification.");
+              } else if (result.code === "401") {
+                Alert.alert("Error", "Please login again.");
+              } else {
+                Alert.alert("Error", result.message || "Failed to delete notification.");
+              }
             } catch (err) {
               Alert.alert("Error", "An unexpected error occurred");
               console.error("Unexpected error:", err);
