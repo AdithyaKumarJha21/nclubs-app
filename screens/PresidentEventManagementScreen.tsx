@@ -13,9 +13,8 @@ import EventCreationModal, {
   EventFormData,
 } from "../components/EventCreationModal";
 import { useAuth } from "../context/AuthContext";
-import { createEvent, listEventsForClubIds } from "../services/events";
+import { createEvent, deleteManagedEvent, listEventsForClubIds } from "../services/events";
 import { getMyManagedClubIds } from "../services/permissions";
-import { supabase } from "../services/supabase";
 import { useTheme } from "../theme/ThemeContext";
 
 type SupabaseRequestError = Error & { code?: string };
@@ -56,66 +55,6 @@ export default function PresidentEventManagementScreen() {
     try {
       setLoading(true);
       setErrorMessage(null);
-
-      if (user.role === "president") {
-        const {
-          data: { user: authUser },
-          error: authError,
-        } = await supabase.auth.getUser();
-
-        if (authError || !authUser) {
-          setErrorMessage("Please log in to continue.");
-          setEvents([]);
-          setClubId(null);
-          setClubIds([]);
-          return;
-        }
-
-        const userId = authUser.id;
-        console.log("PRESIDENT userId:", userId);
-
-        const { data: pa, error: assignmentError } = await supabase
-          .from("president_assignments")
-          .select("club_id")
-          .eq("user_id", userId)
-          .maybeSingle();
-
-        if (assignmentError) {
-          throw assignmentError;
-        }
-
-        console.log("PRESIDENT clubId:", pa?.club_id);
-
-        if (!pa?.club_id) {
-          setErrorMessage("No club assigned. Contact admin.");
-          setEvents([]);
-          setClubId(null);
-          setClubIds([]);
-          return;
-        }
-
-        const { data: eventsData, error: eventsError } = await supabase
-          .from("events")
-          .select("id, club_id, title, description, start_time, end_time, location, status, created_by")
-          .eq("club_id", pa.club_id)
-          .order("start_time", { ascending: true });
-
-        if (eventsError) {
-          throw eventsError;
-        }
-
-        const fetchedEvents = (eventsData ?? []) as EventRow[];
-        console.log("PRESIDENT events count:", fetchedEvents.length);
-        console.log(
-          "PRESIDENT sample created_by:",
-          fetchedEvents.slice(0, 3).map((event) => event.created_by)
-        );
-
-        setClubIds([pa.club_id]);
-        setClubId(pa.club_id);
-        setEvents(fetchedEvents);
-        return;
-      }
 
       const resolvedClubIds = await getMyManagedClubIds();
       const fetchedEvents = await listEventsForClubIds(resolvedClubIds);
@@ -223,18 +162,16 @@ export default function PresidentEventManagementScreen() {
     try {
       setDeletingEventId(eventId);
 
-      await supabase.from("event_registrations").delete().eq("event_id", eventId);
-      await supabase.from("attendance").delete().eq("event_id", eventId);
+      await deleteManagedEvent(eventId, clubIds);
 
-      const { error } = await supabase.from("events").delete().eq("id", eventId);
-
-      if (error) throw error;
+      setEvents((prev) => prev.filter((event) => event.id !== eventId));
 
       Alert.alert("Success", "Event deleted successfully!");
-      await fetchEventsForRole();
     } catch (error) {
       console.error("Error deleting event:", error);
-      Alert.alert("Error", "Failed to delete event");
+      const message =
+        error instanceof Error ? error.message : "Failed to delete event";
+      Alert.alert("Error", message);
     } finally {
       setDeletingEventId("");
     }
