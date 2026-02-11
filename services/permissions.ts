@@ -2,6 +2,7 @@ import { Role } from "../context/AuthContext";
 import { supabase } from "./supabase";
 
 type ProfileRoleRow = {
+  role_id: string | null;
   roles: { name: string | null } | { name: string | null }[] | null;
 };
 
@@ -23,7 +24,22 @@ const normalizeRole = (value: string | null | undefined): Role | null => {
   return null;
 };
 
-const getCurrentUserAndRole = async (): Promise<{ userId: string; role: Role } | null> => {
+
+const getRoleById = async (roleId: string): Promise<Role | null> => {
+  const { data, error } = await supabase
+    .from("roles")
+    .select("name")
+    .eq("id", roleId)
+    .maybeSingle<{ name: string | null }>();
+
+  if (error || !data?.name) {
+    return null;
+  }
+
+  return normalizeRole(data.name);
+};
+
+const getCurrentUserAndRole = async (): Promise<{ userId: string; role: Role | null } | null> => {
   const {
     data: { user },
     error: authError,
@@ -35,11 +51,11 @@ const getCurrentUserAndRole = async (): Promise<{ userId: string; role: Role } |
 
   const { data, error } = await supabase
     .from("profiles")
-    .select("roles(name)")
+    .select("role_id, roles(name)")
     .eq("id", user.id)
     .maybeSingle<ProfileRoleRow>();
 
-  if (error || !data?.roles) {
+  if (error || !data) {
     return null;
   }
 
@@ -47,9 +63,10 @@ const getCurrentUserAndRole = async (): Promise<{ userId: string; role: Role } |
     ? data.roles[0]?.name ?? null
     : data.roles.name;
 
-  const role = normalizeRole(roleName);
-  if (!role) {
-    return null;
+  let role = normalizeRole(roleName);
+
+  if (!role && data.role_id) {
+    role = await getRoleById(data.role_id);
   }
 
   return { userId: user.id, role };
@@ -67,7 +84,8 @@ export const canManageClub = async (clubId: string): Promise<boolean> => {
     return true;
   }
 
-  if (role === "faculty") {
+  const shouldCheckFaculty = role === "faculty" || role === null;
+  if (shouldCheckFaculty) {
     const { data, error } = await supabase
       .from("faculty_assignments")
       .select("id")
@@ -75,10 +93,13 @@ export const canManageClub = async (clubId: string): Promise<boolean> => {
       .eq("club_id", clubId)
       .limit(1);
 
-    return !error && (data?.length ?? 0) > 0;
+    if (!error && (data?.length ?? 0) > 0) {
+      return true;
+    }
   }
 
-  if (role === "president") {
+  const shouldCheckPresident = role === "president" || role === null;
+  if (shouldCheckPresident) {
     const { data, error } = await supabase
       .from("president_assignments")
       .select("id")
@@ -86,7 +107,9 @@ export const canManageClub = async (clubId: string): Promise<boolean> => {
       .eq("club_id", clubId)
       .limit(1);
 
-    return !error && (data?.length ?? 0) > 0;
+    if (!error && (data?.length ?? 0) > 0) {
+      return true;
+    }
   }
 
   return false;
@@ -111,35 +134,35 @@ export const getMyManagedClubIds = async (): Promise<string[]> => {
       .filter((id): id is string => typeof id === "string" && id.length > 0);
   }
 
-  if (role === "faculty") {
+  const clubIds = new Set<string>();
+
+  if (role === "faculty" || role === null) {
     const { data, error } = await supabase
       .from("faculty_assignments")
       .select("club_id")
       .eq("faculty_id", userId);
 
-    if (error || !data) {
-      return [];
+    if (!error && data) {
+      data
+        .map((row) => row.club_id)
+        .filter((clubId): clubId is string => typeof clubId === "string" && clubId.length > 0)
+        .forEach((clubId) => clubIds.add(clubId));
     }
-
-    return data
-      .map((row) => row.club_id)
-      .filter((clubId): clubId is string => typeof clubId === "string" && clubId.length > 0);
   }
 
-  if (role === "president") {
+  if (role === "president" || role === null) {
     const { data, error } = await supabase
       .from("president_assignments")
       .select("club_id")
       .eq("user_id", userId);
 
-    if (error || !data) {
-      return [];
+    if (!error && data) {
+      data
+        .map((row) => row.club_id)
+        .filter((clubId): clubId is string => typeof clubId === "string" && clubId.length > 0)
+        .forEach((clubId) => clubIds.add(clubId));
     }
-
-    return data
-      .map((row) => row.club_id)
-      .filter((clubId): clubId is string => typeof clubId === "string" && clubId.length > 0);
   }
 
-  return [];
+  return [...clubIds];
 };
