@@ -1,4 +1,5 @@
-import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import ClubLogo from "./ClubLogo";
 
 type Props = {
   name: string;
@@ -10,9 +11,7 @@ export default function ClubCard({ name, logo, onPress }: Props) {
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.8}>
       <View style={styles.logoWrapper}>
-        {logo ? (
-          <Image source={{ uri: logo }} style={styles.logo} />
-        ) : null}
+        <ClubLogo logoUrl={logo} clubName={name} size={LOGO_SIZE} />
       </View>
 
       <Text style={styles.name} numberOfLines={2}>
@@ -35,23 +34,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     elevation: 4,
   },
-
-  // Circular container (prevents empty image issues)
   logoWrapper: {
-    width: LOGO_SIZE,
-    height: LOGO_SIZE,
-    borderRadius: LOGO_SIZE / 2,
-    overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 8,
-    backgroundColor: "#f1f5f9", // fallback bg
-  },
-
-  logo: {
-    width: "100%",
-    height: "100%",
-    resizeMode: "cover",
   },
 
   name: {
