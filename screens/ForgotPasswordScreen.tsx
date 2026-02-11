@@ -29,7 +29,9 @@ export default function ForgotPasswordScreen() {
       return;
     }
 
-    const redirectTo = Linking.createURL("/reset-password");
+    const redirectTo = Linking.createURL("reset-password", {
+      scheme: "nclubs",
+    });
     console.log("FORGOT_PASSWORD_REDIRECT", redirectTo);
 
     setLoading(true);
@@ -39,11 +41,16 @@ export default function ForgotPasswordScreen() {
     });
 
     console.log("FORGOT_PASSWORD_RESULT", { hasError: Boolean(error) });
+    setLoading(false);
+
     if (error) {
       console.log("FORGOT_PASSWORD_ERROR", error.message);
+      Alert.alert(
+        "Unable to send reset email",
+        "Please try again in a moment. If this keeps happening, confirm your Supabase Redirect URL settings include nclubs://reset-password.",
+      );
+      return;
     }
-
-    setLoading(false);
 
     Alert.alert(
       "Check your email",
