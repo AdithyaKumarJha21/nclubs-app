@@ -15,6 +15,8 @@ export type SendNotificationInput = {
   role: Role;
 };
 
+type SupabaseRequestError = Error & { code?: string };
+
 export const getNotificationClubOptions = async (
   role: Role,
   userId: string
@@ -70,19 +72,30 @@ export const sendNotification = async ({
     throw new Error("Please log in to continue.");
   }
 
+  if (role !== "admin") {
+    const assignedClubIds = await getMyClubs({ id: user.id, role });
+    if (!assignedClubIds.includes(clubId)) {
+      const permissionError = new Error(
+        "Not allowed to send notification for this club."
+      ) as SupabaseRequestError;
+      permissionError.code = "42501";
+      throw permissionError;
+    }
+  }
+
   const payload = {
     club_id: clubId,
-    created_by: user.id,
     title: title.trim(),
     body: body.trim(),
   };
 
-  console.log("📣 sendNotification payload", {
+  console.log("📣 sendNotification context", {
     role,
     userId: user.id,
-    clubId,
-    payloadKeys: Object.keys(payload),
+    club_id: clubId,
   });
+
+  console.log("📣 sendNotification payload", payload);
 
   const { data, error } = await supabase
     .from("notifications")
