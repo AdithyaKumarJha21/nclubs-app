@@ -122,10 +122,6 @@ export default function SignupScreen() {
       password,
       options: {
         emailRedirectTo,
-        data: {
-          name,
-          usn,
-        },
       },
     });
 
@@ -147,45 +143,24 @@ export default function SignupScreen() {
     }
 
     if (!data.session) {
-      const hasIdentity = Boolean(data.user.identities?.length);
-
-      console.log("[auth] confirmation email requested for", normalizedEmail, {
-        hasIdentity,
+      const { error: resendError } = await supabase.auth.resend({
+        type: "signup",
+        email: normalizedEmail,
+        options: {
+          emailRedirectTo,
+        },
       });
 
-      // If identities are empty, Supabase may be returning an existing user object.
-      // Trigger a targeted resend once so pending users can still receive the mail.
-      if (!hasIdentity) {
-        const { error: resendError } = await supabase.auth.resend({
-          type: "signup",
-          email: normalizedEmail,
-          options: {
-            emailRedirectTo,
-          },
-        });
-
-        if (resendError) {
-          console.warn(
-            "[auth] signup fallback resend failed",
-            resendError.message
-          );
-        } else {
-          console.log("[auth] signup fallback resend triggered", normalizedEmail);
-        }
+      if (resendError) {
+        console.warn("[auth] resend signup email failed", resendError.message);
+      } else {
+        console.log("[auth] resend signup email triggered", normalizedEmail);
       }
 
       Alert.alert(
         "Signup successful 🎉",
-        "Check your email to confirm your account. If you do not receive it in a minute, use Resend confirmation on the login screen."
+        "Check your email to confirm your account."
       );
-
-      router.push({
-        pathname: "/login",
-        params: {
-          email: normalizedEmail,
-          pendingConfirm: "1",
-        },
-      });
     } else {
       // This can happen when email confirmation is disabled in Supabase.
       const { error: profileError } = await supabase
@@ -211,6 +186,15 @@ export default function SignupScreen() {
         return;
       }
 
+      Alert.alert("Signup successful 🎉", "You can now log in.");
+    }
+
+    if (!data.session) {
+      Alert.alert(
+        "Signup successful 🎉",
+        "Check your email to confirm your account."
+      );
+    } else {
       Alert.alert("Signup successful 🎉", "You can now log in.");
     }
 

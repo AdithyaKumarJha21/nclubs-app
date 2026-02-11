@@ -23,7 +23,7 @@ export type Event = {
 // Who can view attendance history?
 export const canViewAttendance = (user: User | null): boolean => {
   if (!user) return false;
-  return user.role !== "student";
+  return true;
 };
 
 // Is student-style attendance view?

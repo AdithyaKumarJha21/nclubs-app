@@ -42,10 +42,14 @@ export default function CalendarGrid() {
     try {
       setIsLoading(true);
 
-      // Fetch all events (we'll filter by date in client)
+      const nowIso = new Date().toISOString();
+
+      // Fetch only active upcoming events.
       const { data, error } = await supabase
         .from("events")
         .select("id, title, event_date, club_id")
+        .eq("status", "active")
+        .gt("end_time", nowIso)
         .order("event_date", { ascending: true });
 
       if (error) throw error;
@@ -63,7 +67,7 @@ export default function CalendarGrid() {
         try {
           // Handle various date formats: ISO string, timestamptz, etc.
           eventDate = new Date(event.event_date);
-        } catch (e) {
+        } catch {
           console.error("Failed to parse date:", event.event_date);
           return;
         }

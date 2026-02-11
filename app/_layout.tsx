@@ -31,7 +31,6 @@ function AppStack() {
     };
   }, []);
 
-  // 🔐 CRITICAL: block rendering until auth resolved
   if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>

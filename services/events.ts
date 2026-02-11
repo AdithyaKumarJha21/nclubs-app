@@ -132,8 +132,10 @@ export const getEventsForStudent = async (options?: { includePast?: boolean }): 
     )
     .eq("status", "active");
 
+  // Past events should be hidden across student-facing event lists.
+  // Use strict `gt` so events ending exactly at `NOW()` are hidden too.
   if (!options?.includePast) {
-    query = query.gte("end_time", nowIso);
+    query = query.gt("end_time", nowIso);
   }
 
   const { data, error } = await query.order("event_date", { ascending: true });
@@ -156,10 +158,15 @@ export const getEventsForStudent = async (options?: { includePast?: boolean }): 
 };
 
 
-export const listEventsForClubIds = async (clubIds: string[]): Promise<ManagedEventRow[]> => {
+export const listEventsForClubIds = async (
+  clubIds: string[],
+  options?: { includePast?: boolean }
+): Promise<ManagedEventRow[]> => {
   if (clubIds.length === 0) {
     return [];
   }
+
+  const nowIso = new Date().toISOString();
 
   const selectColumns =
     "id, club_id, title, description, start_time, end_time, location, status, created_by";
@@ -168,13 +175,46 @@ export const listEventsForClubIds = async (clubIds: string[]): Promise<ManagedEv
     ? supabase.from("events").select(selectColumns)
     : supabase.from("events").select(selectColumns).in("club_id", clubIds);
 
-  const { data, error } = await query.order("start_time", { ascending: true });
+  let scopedQuery = query.eq("status", "active");
+
+  if (!options?.includePast) {
+    scopedQuery = scopedQuery.gt("end_time", nowIso);
+  }
+
+  const { data, error } = await scopedQuery.order("start_time", { ascending: true });
 
   if (error) {
     throw buildSupabaseError(error);
   }
 
   return (data ?? []) as ManagedEventRow[];
+};
+
+export const deleteManagedEvent = async (eventId: string, clubIds: string[]): Promise<void> => {
+  if (!eventId) {
+    throw new Error("Invalid event id.");
+  }
+
+  if (clubIds.length === 0) {
+    throw new Error("Not authorized to delete this event.");
+  }
+
+  const { data, error } = await supabase
+    .from("events")
+    .update({ status: "deleted" })
+    .eq("id", eventId)
+    .in("club_id", clubIds)
+    .neq("status", "deleted")
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    throw buildSupabaseError(error);
+  }
+
+  if (!data?.id) {
+    throw new Error("Event not found or you do not have permission to delete it.");
+  }
 };
 
 export const getEventById = async (id: string): Promise<EventDetail> => {
@@ -224,6 +264,10 @@ export const generateEventQr = async (eventId: string): Promise<EventRow> => {
   return data as EventRow;
 };
 
+export const enableEventAttendance = async (eventId: string): Promise<EventRow> => {
+  return generateEventQr(eventId);
+};
+
 export const disableEventQr = async (eventId: string): Promise<EventRow> => {
   const {
     data: { user },
@@ -251,6 +295,10 @@ export const disableEventQr = async (eventId: string): Promise<EventRow> => {
   }
 
   return data as EventRow;
+};
+
+export const disableEventAttendance = async (eventId: string): Promise<EventRow> => {
+  return disableEventQr(eventId);
 };
 
 export const createEvent = async (input: CreateEventInput): Promise<void> => {

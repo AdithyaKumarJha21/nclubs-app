@@ -1,17 +1,26 @@
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { useAuth } from "../context/AuthContext";
+import { normalizeSupabaseError } from "../services/api/errors";
+import {
+  getNotificationClubOptions,
+  NotificationClubOption,
+  sendNotification,
+} from "../services/notifications";
 import { supabase } from "../services/supabase";
 import { useTheme } from "../theme/ThemeContext";
+
+type SupabaseRequestError = Error & { code?: string };
 
 export default function NotificationComposerScreen() {
   const router = useRouter();
@@ -22,30 +31,57 @@ export default function NotificationComposerScreen() {
   const [loading, setLoading] = useState(false);
   const [notificationsToday, setNotificationsToday] = useState(0);
   const [canSend, setCanSend] = useState(false);
+  const [clubOptions, setClubOptions] = useState<NotificationClubOption[]>([]);
+  const [clubId, setClubId] = useState<string | null>(null);
+  const [loadingClubs, setLoadingClubs] = useState(true);
 
-  useEffect(() => {
-    checkNotificationLimit();
-  }, []);
-
-  const checkNotificationLimit = async () => {
+  const loadClubOptions = useCallback(async () => {
     try {
-      // ✅ CHECK IF USER IS FACULTY/PRESIDENT/ADMIN
+      if (!user || (user.role !== "faculty" && user.role !== "president" && user.role !== "admin")) {
+        return;
+      }
+
+      setLoadingClubs(true);
+      const options = await getNotificationClubOptions(user.role, user.id);
+      setClubOptions(options);
+
+      if (user.role === "faculty" || user.role === "president") {
+        setClubId(options[0]?.id ?? null);
+      } else {
+        setClubId((currentClubId) => {
+          if (currentClubId && options.some((option) => option.id === currentClubId)) {
+            return currentClubId;
+          }
+
+          return options[0]?.id ?? null;
+        });
+      }
+    } catch (error) {
+      console.error("Error loading notification clubs:", error);
+      setClubOptions([]);
+      setClubId(null);
+      Alert.alert("Error", error instanceof Error ? error.message : "Failed to load clubs.");
+    } finally {
+      setLoadingClubs(false);
+    }
+  }, [user]);
+
+  const checkNotificationLimit = useCallback(async () => {
+    try {
       if (!user || (user.role !== "faculty" && user.role !== "president" && user.role !== "admin")) {
         Alert.alert("Error", "Only faculty or president can send notifications");
         router.back();
         return;
       }
 
-      // ✅ GET TODAY'S DATE RANGE
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const tomorrow = new Date(today);
       tomorrow.setDate(tomorrow.getDate() + 1);
 
-      // ✅ COUNT NOTIFICATIONS CREATED TODAY
-      const { data, error } = await supabase
+      const { count, error } = await supabase
         .from("notifications")
-        .select("id", { count: "exact" })
+        .select("id", { count: "exact", head: true })
         .gte("created_at", today.toISOString())
         .lt("created_at", tomorrow.toISOString());
 
@@ -55,18 +91,33 @@ export default function NotificationComposerScreen() {
         return;
       }
 
-      const count = data?.length || 0;
-      setNotificationsToday(count);
-      setCanSend(count < 2); // Allow up to 2 per day
+      const resolvedCount = count ?? 0;
+      setNotificationsToday(resolvedCount);
+      setCanSend(resolvedCount < 2);
     } catch (err) {
       console.error("Unexpected error:", err);
       setCanSend(false);
     }
-  };
+  }, [router, user]);
+
+  useEffect(() => {
+    checkNotificationLimit();
+    loadClubOptions();
+  }, [checkNotificationLimit, loadClubOptions]);
 
   const handleSendNotification = async () => {
     if (!title.trim() || !body.trim()) {
       Alert.alert("Error", "Please fill in all fields");
+      return;
+    }
+
+    if (!clubId) {
+      Alert.alert("Error", "Please select a club before sending.");
+      return;
+    }
+
+    if (!clubOptions.some((option) => option.id === clubId)) {
+      Alert.alert("Error", "Not allowed to send notification for this club.");
       return;
     }
 
@@ -78,48 +129,99 @@ export default function NotificationComposerScreen() {
       return;
     }
 
+    if (!user || (user.role !== "faculty" && user.role !== "president" && user.role !== "admin")) {
+      Alert.alert("Error", "Only faculty or president can send notifications");
+      return;
+    }
+
+    const {
+      data: { user: authUser },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !authUser) {
+      Alert.alert("Error", "Session expired. Please login again.");
+      return;
+    }
+
     setLoading(true);
 
     try {
-      const { error } = await supabase.from("notifications").insert({
-        title: title.trim(),
-        body: body.trim(),
-        created_at: new Date().toISOString(),
+      await sendNotification({
+        clubId,
+        title,
+        body,
+        role: user.role,
       });
-
-      if (error) {
-        Alert.alert("Error", "Failed to send notification");
-        console.error("Insert error:", error);
-        setLoading(false);
-        return;
-      }
 
       Alert.alert("Success", "Notification sent!");
       setTitle("");
       setBody("");
-      setNotificationsToday(notificationsToday + 1);
+      setNotificationsToday((prev) => prev + 1);
       setCanSend(notificationsToday + 1 < 2);
 
-      // Navigate back after 1 second
       setTimeout(() => {
         router.back();
       }, 1000);
-    } catch (err) {
-      Alert.alert("Error", "An unexpected error occurred");
-      console.error("Unexpected error:", err);
+    } catch (error) {
+      console.error("Notification send failed:", error);
+      const typedError = error as SupabaseRequestError;
+
+      if (typedError.code === "42501") {
+        Alert.alert("Error", "Not allowed to send notification for this club.");
+      } else if (typedError.code === "23505") {
+        Alert.alert("Error", "Duplicate notification.");
+      } else {
+        Alert.alert("Error", normalizeSupabaseError(error));
+      }
+    } finally {
       setLoading(false);
     }
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <Text style={[styles.heading, { color: theme.text }]}>
-        Send Notification
-      </Text>
+    <ScrollView
+      contentContainerStyle={[
+        styles.container,
+        { backgroundColor: theme.background },
+      ]}
+    >
+      <Text style={[styles.heading, { color: theme.text }]}>Send Notification</Text>
 
-      <Text style={[styles.limitText, { color: theme.text }]}>
-        Notifications sent today: {notificationsToday}/2
-      </Text>
+      <Text style={[styles.limitText, { color: theme.text }]}>Notifications sent today: {notificationsToday}/2</Text>
+
+      <Text style={[styles.label, { color: theme.text }]}>Club</Text>
+      {loadingClubs ? (
+        <ActivityIndicator color={theme.text} style={styles.clubLoader} />
+      ) : (
+        <View style={styles.clubOptionsWrap}>
+          {clubOptions.map((option) => {
+            const selected = option.id === clubId;
+            return (
+              <TouchableOpacity
+                key={option.id}
+                style={[
+                  styles.clubChip,
+                  {
+                    borderColor: selected ? "#2563eb" : "#9ca3af",
+                    backgroundColor: selected ? "#dbeafe" : "transparent",
+                  },
+                ]}
+                onPress={() => setClubId(option.id)}
+                disabled={loading}
+              >
+                <Text style={{ color: theme.text, fontWeight: selected ? "700" : "500" }}>
+                  {option.name}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+
+          {clubOptions.length === 0 && (
+            <Text style={[styles.assignmentWarning, { color: "#ef4444" }]}>No club assignment found. Contact admin.</Text>
+          )}
+        </View>
+      )}
 
       <TextInput
         style={[
@@ -151,12 +253,12 @@ export default function NotificationComposerScreen() {
         style={[
           styles.button,
           {
-            backgroundColor: canSend ? "#2563eb" : "#d1d5db",
+            backgroundColor: canSend && !loadingClubs && Boolean(clubId) ? "#2563eb" : "#d1d5db",
             opacity: loading ? 0.6 : 1,
           },
         ]}
         onPress={handleSendNotification}
-        disabled={!canSend || loading}
+        disabled={!canSend || loading || loadingClubs || !clubId}
       >
         {loading ? (
           <ActivityIndicator color="white" />
@@ -166,17 +268,15 @@ export default function NotificationComposerScreen() {
       </TouchableOpacity>
 
       {!canSend && (
-        <Text style={[styles.warningText, { color: "#ef4444" }]}>
-          You've reached the 2 notifications per day limit. Try again tomorrow.
-        </Text>
+        <Text style={[styles.warningText, { color: "#ef4444" }]}>You have reached the 2 notifications per day limit. Try again tomorrow.</Text>
       )}
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    flexGrow: 1,
     padding: 16,
   },
   heading: {
@@ -188,6 +288,30 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginBottom: 16,
     fontWeight: "500",
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: "600",
+    marginBottom: 8,
+  },
+  clubLoader: {
+    marginBottom: 12,
+  },
+  clubOptionsWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 12,
+  },
+  clubChip: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  assignmentWarning: {
+    fontSize: 12,
+    marginBottom: 12,
   },
   input: {
     borderWidth: 1,

@@ -14,62 +14,158 @@ import {
 } from "react-native";
 import { supabase } from "../services/supabase";
 
+type RecoveryParams = {
+  accessToken: string | null;
+  refreshToken: string | null;
+  code: string | null;
+};
+
+const getRecoveryParamsFromUrl = (url: string): RecoveryParams => {
+  const [withoutHash, hashPart = ""] = url.split("#");
+  const queryPart = withoutHash.includes("?")
+    ? withoutHash.split("?")[1]
+    : "";
+
+  const hashParams = new URLSearchParams(hashPart);
+  const queryParams = new URLSearchParams(queryPart);
+
+  const accessToken =
+    hashParams.get("access_token") ?? queryParams.get("access_token");
+  const refreshToken =
+    hashParams.get("refresh_token") ?? queryParams.get("refresh_token");
+  const code = hashParams.get("code") ?? queryParams.get("code");
+
+  return {
+    accessToken,
+    refreshToken,
+    code,
+  };
+};
+
 export default function ResetPassword() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [ready, setReady] = useState(false);
+  const [isRecoveryReady, setIsRecoveryReady] = useState(false);
+  const [isCheckingLink, setIsCheckingLink] = useState(true);
 
   useEffect(() => {
-    let mounted = true;
+    let isMounted = true;
 
-    const hydrateSession = async () => {
-      const { data } = await supabase.auth.getSession();
-      if (!mounted) {
+    const setBlockedState = () => {
+      if (!isMounted) {
         return;
       }
 
-      if (data.session) {
-        setReady(true);
-        setEmail(data.session.user.email ?? "");
-      }
+      setIsRecoveryReady(false);
+      setIsCheckingLink(false);
+      setEmail("");
     };
 
-    hydrateSession();
+    const syncFromSession = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-    const linkSub = Linking.addEventListener("url", ({ url }) => {
-      console.log("DEEPLINK", url);
+      if (!isMounted) {
+        return;
+      }
+
+      if (session?.user?.email) {
+        setEmail(session.user.email);
+        setIsRecoveryReady(true);
+      } else {
+        setIsRecoveryReady(false);
+      }
+
+      setIsCheckingLink(false);
+    };
+
+    const handleIncomingUrl = async (url: string) => {
+      console.log("INCOMING_DEEPLINK_URL", url);
+
+      const { accessToken, refreshToken, code } = getRecoveryParamsFromUrl(url);
+      const hasTokenPair = Boolean(accessToken && refreshToken);
+      const hasCode = Boolean(code);
+
+      console.log("RECOVERY_LINK_DETECTED", {
+        hasTokenPair,
+        hasCode,
+      });
+
+      if (!hasTokenPair && !hasCode) {
+        setBlockedState();
+        return;
+      }
+
+      if (hasTokenPair) {
+        const { error } = await supabase.auth.setSession({
+          access_token: accessToken as string,
+          refresh_token: refreshToken as string,
+        });
+
+        if (error) {
+          console.log("RESET_SET_SESSION_ERROR", error.message);
+          setBlockedState();
+          return;
+        }
+      } else if (hasCode) {
+        const { error } = await supabase.auth.exchangeCodeForSession(
+          code as string,
+        );
+
+        if (error) {
+          console.log("RESET_EXCHANGE_CODE_ERROR", error.message);
+          setBlockedState();
+          return;
+        }
+      }
+
+      await syncFromSession();
+    };
+
+    const initialize = async () => {
+      const initialUrl = await Linking.getInitialURL();
+
+      if (!initialUrl) {
+        setBlockedState();
+        return;
+      }
+
+      await handleIncomingUrl(initialUrl);
+    };
+
+    const linkSubscription = Linking.addEventListener("url", ({ url }) => {
+      setIsCheckingLink(true);
+      void handleIncomingUrl(url);
     });
 
     const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
+      data: { subscription: authSubscription },
+    } = supabase.auth.onAuthStateChange((event) => {
       console.log("AUTH_EVENT", event);
-
-      if (event === "PASSWORD_RECOVERY" || session) {
-        setReady(true);
-        setEmail(session?.user?.email ?? "");
-      }
     });
 
+    void initialize();
+
     return () => {
-      mounted = false;
-      linkSub.remove();
-      subscription.unsubscribe();
+      isMounted = false;
+      linkSubscription.remove();
+      authSubscription.unsubscribe();
     };
   }, []);
 
   const canSubmit = useMemo(() => {
     return (
-      ready &&
+      isRecoveryReady &&
       newPassword.length >= 8 &&
       confirmPassword.length >= 8 &&
       newPassword === confirmPassword &&
       !loading
     );
-  }, [confirmPassword, loading, newPassword, ready]);
+  }, [confirmPassword, isRecoveryReady, loading, newPassword]);
 
   const handleSubmit = async () => {
     if (!newPassword || !confirmPassword) {
@@ -97,10 +193,10 @@ export default function ResetPassword() {
       return;
     }
 
-    Alert.alert("Password updated. You will be signed out.");
+    Alert.alert("Password updated. Please log in again.");
     await supabase.auth.signOut();
     setLoading(false);
-    router.replace("/login?reason=password_reset");
+    router.replace("/login");
   };
 
   return (
@@ -112,48 +208,58 @@ export default function ResetPassword() {
         <Text style={styles.title}>Reset Password</Text>
         <Text style={styles.subtitle}>Set a new password for your account.</Text>
 
-        {!ready ? (
+        {isCheckingLink ? (
           <View style={styles.pendingState}>
             <ActivityIndicator color="#2563eb" />
-            <Text style={styles.pendingText}>
-              Open this page from your password reset email link.
+            <Text style={styles.pendingText}>Validating reset link...</Text>
+          </View>
+        ) : null}
+
+        {!isCheckingLink && !isRecoveryReady ? (
+          <View style={styles.invalidState}>
+            <Text style={styles.invalidText}>
+              Invalid or expired link. Please request a new reset email.
             </Text>
           </View>
         ) : null}
 
-        <TextInput
-          style={[styles.input, styles.readOnlyInput]}
-          placeholder="Email"
-          value={email}
-          editable={false}
-          autoCapitalize="none"
-        />
+        {!isCheckingLink && isRecoveryReady ? (
+          <>
+            <TextInput
+              style={[styles.input, styles.readOnlyInput]}
+              placeholder="Email"
+              value={email}
+              editable={false}
+              autoCapitalize="none"
+            />
 
-        <TextInput
-          style={styles.input}
-          placeholder="New password"
-          secureTextEntry
-          value={newPassword}
-          onChangeText={setNewPassword}
-        />
+            <TextInput
+              style={styles.input}
+              placeholder="New password"
+              secureTextEntry
+              value={newPassword}
+              onChangeText={setNewPassword}
+            />
 
-        <TextInput
-          style={styles.input}
-          placeholder="Confirm password"
-          secureTextEntry
-          value={confirmPassword}
-          onChangeText={setConfirmPassword}
-        />
+            <TextInput
+              style={styles.input}
+              placeholder="Confirm password"
+              secureTextEntry
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+            />
 
-        <TouchableOpacity
-          style={[styles.button, !canSubmit && styles.buttonDisabled]}
-          onPress={handleSubmit}
-          disabled={!canSubmit}
-        >
-          <Text style={styles.buttonText}>
-            {loading ? "Updating..." : "Update password"}
-          </Text>
-        </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.button, !canSubmit && styles.buttonDisabled]}
+              onPress={handleSubmit}
+              disabled={!canSubmit}
+            >
+              <Text style={styles.buttonText}>
+                {loading ? "Updating..." : "Update password"}
+              </Text>
+            </TouchableOpacity>
+          </>
+        ) : null}
       </View>
     </KeyboardAvoidingView>
   );
@@ -192,6 +298,17 @@ const styles = StyleSheet.create({
     marginTop: 8,
     color: "#64748b",
     textAlign: "center",
+  },
+  invalidState: {
+    backgroundColor: "#fee2e2",
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+  },
+  invalidText: {
+    color: "#991b1b",
+    textAlign: "center",
+    fontWeight: "500",
   },
   input: {
     borderWidth: 1,
