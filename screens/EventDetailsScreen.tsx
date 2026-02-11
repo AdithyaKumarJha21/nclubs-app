@@ -3,14 +3,17 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
 import EventRegistrationModal from "../components/EventRegistrationModal";
 import { useAuth } from "../context/AuthContext";
+import { hasMarkedAttendance, markAttendance } from "../services/attendance";
 import { EventDetail, getEventById } from "../services/events";
 import {
   EventRegistration,
@@ -18,11 +21,7 @@ import {
   isEventRegisteredLocally,
 } from "../services/registrations";
 import { useTheme } from "../theme/ThemeContext";
-import {
-  formatTimeLocal,
-  getEventWindowStatus,
-  isWithinEventWindow,
-} from "../utils/timeWindow";
+import { formatTimeLocal } from "../utils/timeWindow";
 
 export default function EventDetailsScreen() {
   const router = useRouter();
@@ -36,15 +35,9 @@ export default function EventDetailsScreen() {
   const [registration, setRegistration] = useState<EventRegistration | null>(null);
   const [showRegistrationModal, setShowRegistrationModal] = useState(false);
   const [hasPrompted, setHasPrompted] = useState(false);
-  const [now, setNow] = useState(() => new Date());
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setNow(new Date());
-    }, 30000);
-
-    return () => clearInterval(interval);
-  }, []);
+  const [attendanceMarked, setAttendanceMarked] = useState(false);
+  const [showAttendanceModal, setShowAttendanceModal] = useState(false);
+  const [submittingAttendance, setSubmittingAttendance] = useState(false);
 
   useEffect(() => {
     if (!resolvedEventId) return;
@@ -53,11 +46,13 @@ export default function EventDetailsScreen() {
     const loadDetails = async () => {
       try {
         setLoading(true);
-        const [eventData, registrationData, cachedRegistration] = await Promise.all([
-          getEventById(resolvedEventId),
-          getMyRegistration(resolvedEventId),
-          isEventRegisteredLocally(resolvedEventId),
-        ]);
+        const [eventData, registrationData, cachedRegistration, alreadyMarked] =
+          await Promise.all([
+            getEventById(resolvedEventId),
+            getMyRegistration(resolvedEventId),
+            isEventRegisteredLocally(resolvedEventId),
+            hasMarkedAttendance(resolvedEventId),
+          ]);
 
         if (!isMounted) return;
 
@@ -76,17 +71,7 @@ export default function EventDetailsScreen() {
 
         setEvent(eventData);
         setRegistration(resolvedRegistration);
-
-        console.log("📍 Event detail loaded", {
-          userId: user?.id,
-          eventId: resolvedEventId,
-          qrEnabled: eventData.qr_enabled,
-          startTime: eventData.start_time,
-          endTime: eventData.end_time,
-          now: new Date().toISOString(),
-          isRegistered: !!resolvedRegistration,
-          hasCachedRegistration: cachedRegistration,
-        });
+        setAttendanceMarked(alreadyMarked);
 
         if (!resolvedRegistration && !hasPrompted) {
           setShowRegistrationModal(true);
@@ -111,64 +96,76 @@ export default function EventDetailsScreen() {
 
   const isRegistered = !!registration;
 
-  const scanStatus = useMemo(() => {
+  const attendanceStatus = useMemo(() => {
     if (!event) return null;
 
     if (!event.qr_enabled) {
       return {
         enabled: false,
-        message: "QR not enabled yet.",
+        message: "Attendance is disabled by faculty/president.",
       } as const;
     }
 
-    const status = getEventWindowStatus(event.start_time, event.end_time, now);
-    if (status === "before") {
+    if (attendanceMarked) {
       return {
         enabled: false,
-        message: `Scan opens at ${formatTimeLocal(event.start_time)}.`,
-      } as const;
-    }
-    if (status === "after") {
-      return {
-        enabled: false,
-        message: "Event ended. Scan closed.",
-      } as const;
-    }
-    if (status === "invalid") {
-      return {
-        enabled: false,
-        message: "Scan window unavailable.",
+        message: "Attendance already submitted.",
       } as const;
     }
 
     return {
       enabled: true,
-      message: "Scan is open now.",
+      message: "Attendance is enabled. You can submit once.",
     } as const;
-  }, [event, now]);
+  }, [attendanceMarked, event]);
 
   const handleRegistrationSuccess = (newRegistration: EventRegistration) => {
     setRegistration(newRegistration);
     setShowRegistrationModal(false);
   };
 
-  const handleScanQR = async () => {
-    if (!event) return;
-
-    if (!event.qr_enabled || !isWithinEventWindow(event.start_time, event.end_time, now)) {
-      Alert.alert("Scan unavailable", scanStatus?.message ?? "Scan not available yet.");
-      return;
-    }
-
+  const openAttendanceModal = () => {
     if (!isRegistered) {
-      Alert.alert("Registration required", "Please register before scanning.");
+      Alert.alert("Registration required", "Please register before submitting attendance.");
       return;
     }
 
-    router.push({
-      pathname: "/qr-scanner",
-      params: { eventId: resolvedEventId, mode: "student" },
-    });
+    if (!attendanceStatus?.enabled) {
+      Alert.alert("Attendance unavailable", attendanceStatus?.message ?? "Not available now.");
+      return;
+    }
+
+    setShowAttendanceModal(true);
+  };
+
+  const handleSubmitAttendance = async () => {
+    if (!event || !registration || submittingAttendance) return;
+
+    try {
+      setSubmittingAttendance(true);
+      const result = await markAttendance(event.id);
+
+      if (result.status === "already") {
+        setAttendanceMarked(true);
+        Alert.alert("Attendance already marked", "You can submit attendance only once.");
+        setShowAttendanceModal(false);
+        return;
+      }
+
+      if (result.status === "forbidden") {
+        Alert.alert("Not allowed", "You are not allowed to mark attendance right now.");
+        return;
+      }
+
+      setAttendanceMarked(true);
+      setShowAttendanceModal(false);
+      Alert.alert("Success", "Attendance submitted successfully ✅");
+    } catch (error) {
+      console.error("Attendance submit failed:", error);
+      Alert.alert("Error", "Failed to submit attendance");
+    } finally {
+      setSubmittingAttendance(false);
+    }
   };
 
   if (loading) {
@@ -233,18 +230,12 @@ export default function EventDetailsScreen() {
               )}`}
               isDark={isDark}
             />
-            <DetailRow
-              label="Location"
-              value={event.location || "TBA"}
-              isDark={isDark}
-            />
+            <DetailRow label="Location" value={event.location || "TBA"} isDark={isDark} />
           </View>
 
           {event.description ? (
             <View style={styles.descriptionSection}>
-              <Text style={[styles.sectionTitle, { color: isDark ? "#fff" : "#000" }]}>
-                Description
-              </Text>
+              <Text style={[styles.sectionTitle, { color: isDark ? "#fff" : "#000" }]}>Description</Text>
               <Text style={[styles.description, { color: isDark ? "#aaa" : "#666" }]}>
                 {event.description}
               </Text>
@@ -260,29 +251,22 @@ export default function EventDetailsScreen() {
               <TouchableOpacity
                 style={[
                   styles.scanButton,
-                  { backgroundColor: scanStatus?.enabled ? "#0066cc" : "#999" },
+                  { backgroundColor: attendanceStatus?.enabled ? "#0066cc" : "#999" },
                 ]}
-                onPress={handleScanQR}
-                disabled={!scanStatus?.enabled}
+                onPress={openAttendanceModal}
+                disabled={!attendanceStatus?.enabled}
               >
-                <Text style={styles.scanButtonText}>Scan QR for Attendance</Text>
+                <Text style={styles.scanButtonText}>Attendance</Text>
               </TouchableOpacity>
 
-              <Text
-                style={[styles.scanHint, { color: isDark ? "#aaa" : "#666" }]}
-              >
-                {scanStatus?.message}
+              <Text style={[styles.scanHint, { color: isDark ? "#aaa" : "#666" }]}>
+                {attendanceStatus?.message}
               </Text>
             </View>
           ) : (
             <View>
-              <Text style={[styles.scanHint, { color: isDark ? "#aaa" : "#666" }]}>
-                Please register to scan attendance.
-              </Text>
-              <TouchableOpacity
-                style={styles.registerButton}
-                onPress={() => setShowRegistrationModal(true)}
-              >
+              <Text style={[styles.scanHint, { color: isDark ? "#aaa" : "#666" }]}>Please register to access attendance.</Text>
+              <TouchableOpacity style={styles.registerButton} onPress={() => setShowRegistrationModal(true)}>
                 <Text style={styles.registerButtonText}>Register for Event</Text>
               </TouchableOpacity>
             </View>
@@ -297,6 +281,45 @@ export default function EventDetailsScreen() {
         onClose={() => setShowRegistrationModal(false)}
         onSuccess={handleRegistrationSuccess}
       />
+
+      <Modal visible={showAttendanceModal} transparent animationType="fade" onRequestClose={() => setShowAttendanceModal(false)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowAttendanceModal(false)}>
+          <View style={[styles.modalContainer, { backgroundColor: isDark ? "#2a2a2a" : "#fff" }]}> 
+            <Text style={[styles.modalTitle, { color: isDark ? "#fff" : "#000" }]}>Submit Attendance</Text>
+            <Text style={[styles.modalSubtitle, { color: isDark ? "#aaa" : "#666" }]}>Your registered USN</Text>
+            <TextInput
+              value={registration?.usn ?? ""}
+              editable={false}
+              style={[
+                styles.usnInput,
+                {
+                  borderColor: isDark ? "#444" : "#ddd",
+                  color: isDark ? "#fff" : "#000",
+                  backgroundColor: isDark ? "#1a1a1a" : "#f4f4f4",
+                },
+              ]}
+            />
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalCancelButton, { opacity: submittingAttendance ? 0.6 : 1 }]}
+                onPress={() => setShowAttendanceModal(false)}
+                disabled={submittingAttendance}
+              >
+                <Text style={styles.modalCancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalSubmitButton, { opacity: submittingAttendance ? 0.6 : 1 }]}
+                onPress={handleSubmitAttendance}
+                disabled={submittingAttendance}
+              >
+                <Text style={styles.modalSubmitButtonText}>{submittingAttendance ? "Submitting..." : "Submit"}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </>
   );
 }
@@ -310,12 +333,8 @@ interface DetailRowProps {
 function DetailRow({ label, value, isDark }: DetailRowProps) {
   return (
     <View style={styles.detailRow}>
-      <Text style={[styles.detailLabel, { color: isDark ? "#aaa" : "#666" }]}>
-        {label}
-      </Text>
-      <Text style={[styles.detailValue, { color: isDark ? "#fff" : "#000" }]}>
-        {value}
-      </Text>
+      <Text style={[styles.detailLabel, { color: isDark ? "#aaa" : "#666" }]}>{label}</Text>
+      <Text style={[styles.detailValue, { color: isDark ? "#fff" : "#000" }]}>{value}</Text>
     </View>
   );
 }
@@ -387,7 +406,6 @@ const styles = StyleSheet.create({
   scanSection: {
     marginBottom: 12,
   },
-
   registeredButton: {
     paddingVertical: 12,
     borderRadius: 8,
@@ -426,5 +444,55 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "600",
     fontSize: 16,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    padding: 20,
+  },
+  modalContainer: {
+    borderRadius: 12,
+    padding: 16,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    marginBottom: 6,
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    marginBottom: 8,
+  },
+  usnInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 14,
+    fontWeight: "600",
+  },
+  modalButtons: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 10,
+  },
+  modalCancelButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  modalCancelButtonText: {
+    color: "#666",
+    fontWeight: "600",
+  },
+  modalSubmitButton: {
+    backgroundColor: "#0066cc",
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  modalSubmitButtonText: {
+    color: "#fff",
+    fontWeight: "600",
   },
 });

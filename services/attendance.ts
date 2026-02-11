@@ -44,3 +44,27 @@ export const markAttendance = async (eventId: string): Promise<AttendanceResult>
 
   return { status: "success" };
 };
+
+export const hasMarkedAttendance = async (eventId: string): Promise<boolean> => {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    throw new Error("Not authorized.");
+  }
+
+  const { data, error } = await supabase
+    .from("attendance")
+    .select("event_id")
+    .eq("event_id", eventId)
+    .eq("student_id", user.id)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(normalizeSupabaseError(error));
+  }
+
+  return !!data;
+};

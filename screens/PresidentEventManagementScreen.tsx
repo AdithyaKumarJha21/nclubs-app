@@ -262,7 +262,7 @@ export default function PresidentEventManagementScreen() {
             { color: isDark ? "#fff" : "#000" },
           ]}
         >
-          My Events - QR Management
+          My Events - Attendance Management
         </Text>
         <TouchableOpacity
           style={[styles.createButton, { opacity: clubId ? 1 : 0.6 }]}
@@ -353,7 +353,7 @@ export default function PresidentEventManagementScreen() {
                       router.push({ pathname: "/president/events/[id]", params: { id: item.id } })
                     }
                   >
-                    <Text style={styles.buttonText}>Manage QR</Text>
+                    <Text style={styles.buttonText}>Manage Attendance</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
