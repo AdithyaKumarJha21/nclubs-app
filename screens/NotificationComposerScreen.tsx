@@ -134,6 +134,16 @@ export default function NotificationComposerScreen() {
       return;
     }
 
+    const {
+      data: { user: authUser },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !authUser) {
+      Alert.alert("Error", "Session expired. Please login again.");
+      return;
+    }
+
     setLoading(true);
 
     try {

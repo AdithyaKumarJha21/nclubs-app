@@ -69,7 +69,7 @@ export const sendNotification = async ({
   } = await supabase.auth.getUser();
 
   if (authError || !user) {
-    throw new Error("Please log in to continue.");
+    throw new Error("Session expired. Please login again.");
   }
 
   if (role !== "admin") {
@@ -85,17 +85,17 @@ export const sendNotification = async ({
 
   const payload = {
     club_id: clubId,
+    user_id: user.id,
     title: title.trim(),
     body: body.trim(),
   };
 
-  console.log("📣 sendNotification context", {
-    role,
+  console.log("📣 sendNotification payload", {
+    clubId,
     userId: user.id,
-    club_id: clubId,
+    titleLen: title.length,
+    messageLen: body.length,
   });
-
-  console.log("📣 sendNotification payload", payload);
 
   const { data, error } = await supabase
     .from("notifications")
