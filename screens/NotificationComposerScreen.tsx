@@ -116,6 +116,11 @@ export default function NotificationComposerScreen() {
       return;
     }
 
+    if (!clubOptions.some((option) => option.id === clubId)) {
+      Alert.alert("Error", "Not allowed to send notification for this club.");
+      return;
+    }
+
     if (!canSend) {
       Alert.alert(
         "Limit Reached",
@@ -153,10 +158,9 @@ export default function NotificationComposerScreen() {
       const typedError = error as SupabaseRequestError;
 
       if (typedError.code === "42501") {
-        Alert.alert(
-          "Error",
-          "Not authorized to send notification for this club. Check assignment."
-        );
+        Alert.alert("Error", "Not allowed to send notification for this club.");
+      } else if (typedError.code === "23505") {
+        Alert.alert("Error", "Duplicate notification.");
       } else {
         Alert.alert("Error", normalizeSupabaseError(error));
       }
