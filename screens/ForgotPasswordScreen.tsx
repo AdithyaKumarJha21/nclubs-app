@@ -30,10 +30,7 @@ export default function ForgotPasswordScreen() {
     }
 
     const redirectTo = Linking.createURL("/reset-password");
-
-    if (__DEV__) {
-      console.log("FORGOT_PASSWORD_REDIRECT", redirectTo, Linking.parse(redirectTo));
-    }
+    console.log("FORGOT_PASSWORD_REDIRECT", redirectTo);
 
     setLoading(true);
 
@@ -41,15 +38,12 @@ export default function ForgotPasswordScreen() {
       redirectTo,
     });
 
-    if (__DEV__) {
-      console.log("FORGOT_PASSWORD_RESULT", { error });
+    console.log("FORGOT_PASSWORD_RESULT", { hasError: Boolean(error) });
+    if (error) {
+      console.log("FORGOT_PASSWORD_ERROR", error.message);
     }
 
     setLoading(false);
-
-    if (error && __DEV__) {
-      console.log("FORGOT_PASSWORD_ERROR", error.message);
-    }
 
     Alert.alert(
       "Check your email",

@@ -20,22 +20,30 @@ type RecoveryTokens = {
 };
 
 const getRecoveryTokensFromUrl = (url: string): RecoveryTokens | null => {
-  const [base, hashPart] = url.split("#");
-  const queryPart = base.includes("?") ? base.split("?")[1] : "";
+  const [, hashPart = ""] = url.split("#");
+  const hashParams = new URLSearchParams(hashPart);
 
-  const hashParams = new URLSearchParams(hashPart ?? "");
-  const queryParams = new URLSearchParams(queryPart);
+  const parsed = Linking.parse(url);
+  const queryAccessToken =
+    typeof parsed.queryParams?.access_token === "string"
+      ? parsed.queryParams.access_token
+      : null;
+  const queryRefreshToken =
+    typeof parsed.queryParams?.refresh_token === "string"
+      ? parsed.queryParams.refresh_token
+      : null;
 
-  const accessToken =
-    hashParams.get("access_token") ?? queryParams.get("access_token");
-  const refreshToken =
-    hashParams.get("refresh_token") ?? queryParams.get("refresh_token");
+  const accessToken = hashParams.get("access_token") ?? queryAccessToken;
+  const refreshToken = hashParams.get("refresh_token") ?? queryRefreshToken;
 
   if (!accessToken || !refreshToken) {
     return null;
   }
 
-  return { accessToken, refreshToken };
+  return {
+    accessToken,
+    refreshToken,
+  };
 };
 
 export default function ResetPassword() {
@@ -49,22 +57,7 @@ export default function ResetPassword() {
   useEffect(() => {
     let mounted = true;
 
-    const hydrateSession = async () => {
-      const initialUrl = await Linking.getInitialURL();
-
-      if (initialUrl) {
-        console.log("INCOMING_DEEPLINK", initialUrl);
-
-        const tokens = getRecoveryTokensFromUrl(initialUrl);
-
-        if (tokens) {
-          await supabase.auth.setSession({
-            access_token: tokens.accessToken,
-            refresh_token: tokens.refreshToken,
-          });
-        }
-      }
-
+    const syncFromSession = async () => {
       const { data } = await supabase.auth.getSession();
 
       if (!mounted) {
@@ -77,23 +70,43 @@ export default function ResetPassword() {
       }
     };
 
-    hydrateSession();
-
-    const linkSub = Linking.addEventListener("url", async ({ url }) => {
+    const applyRecoveryUrl = async (url: string) => {
       console.log("INCOMING_DEEPLINK", url);
 
       const tokens = getRecoveryTokensFromUrl(url);
-
-      if (tokens) {
-        await supabase.auth.setSession({
-          access_token: tokens.accessToken,
-          refresh_token: tokens.refreshToken,
-        });
+      if (!tokens) {
+        await syncFromSession();
+        return;
       }
+
+      const { error } = await supabase.auth.setSession({
+        access_token: tokens.accessToken,
+        refresh_token: tokens.refreshToken,
+      });
+
+      if (error) {
+        console.log("RESET_SET_SESSION_ERROR", error.message);
+      }
+
+      await syncFromSession();
+    };
+
+    const initialize = async () => {
+      const initialUrl = await Linking.getInitialURL();
+
+      if (initialUrl) {
+        await applyRecoveryUrl(initialUrl);
+      } else {
+        await syncFromSession();
+      }
+    };
+
+    const linkSubscription = Linking.addEventListener("url", ({ url }) => {
+      void applyRecoveryUrl(url);
     });
 
     const {
-      data: { subscription },
+      data: { subscription: authSubscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
       console.log("AUTH_EVENT", event);
 
@@ -103,10 +116,12 @@ export default function ResetPassword() {
       }
     });
 
+    void initialize();
+
     return () => {
       mounted = false;
-      linkSub.remove();
-      subscription.unsubscribe();
+      linkSubscription.remove();
+      authSubscription.unsubscribe();
     };
   }, []);
 
