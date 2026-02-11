@@ -11,6 +11,7 @@ import {
 } from "react-native";
 
 import ClubGallery from "../components/ClubGallery";
+import ClubLogo from "../components/ClubLogo";
 import EditableTextSection from "../components/EditableTextSection";
 import UploadedFilesList from "../components/UploadedFilesList";
 import UploadFileSection from "../components/UploadFileSection";
@@ -155,10 +156,15 @@ export default function ClubProfileScreen() {
 
     if (sectionError) {
       if (sectionError.code === "42501") {
-        Alert.alert("Not authorized", "Not authorized to edit this club.");
-      } else {
-        Alert.alert("Error", sectionError.message);
+        Alert.alert(
+          "Saved with limitation",
+          "Club details were saved, but section content could not be updated with your current permissions."
+        );
+        cancelEdit();
+        return;
       }
+
+      Alert.alert("Error", sectionError.message);
       return;
     }
 
@@ -170,6 +176,11 @@ export default function ClubProfileScreen() {
       <Text style={[styles.clubName, { color: theme.text }]}> 
         Club Profile
       </Text>
+
+      <View style={styles.logoDisplayWrap}>
+        <ClubLogo logoUrl={clubLogoUrl} clubName={clubName} size={120} />
+        <Text style={[styles.logoHint, { color: theme.text }]}>Club Logo</Text>
+      </View>
 
       {isManager ? (
         <TextInput
@@ -207,6 +218,13 @@ export default function ClubProfileScreen() {
             placeholder="https://..."
             placeholderTextColor="#6b7280"
           />
+
+          {isEditing && isManager ? (
+            <View style={styles.logoPreviewWrap}>
+              <Text style={[styles.logoPreviewLabel, { color: theme.text }]}>Live preview</Text>
+              <ClubLogo logoUrl={clubLogoUrl} clubName={clubName} size={88} showErrorMessage />
+            </View>
+          ) : null}
         </>
       )}
 
@@ -253,6 +271,15 @@ const styles = StyleSheet.create({
   container: { flex: 1, padding: 16 },
   clubName: { fontSize: 28, fontWeight: "bold", marginBottom: 20 },
   fieldLabel: { fontSize: 14, fontWeight: "600", marginBottom: 6 },
+  logoDisplayWrap: {
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  logoHint: {
+    marginTop: 8,
+    fontSize: 12,
+    opacity: 0.75,
+  },
   readOnlyValue: { fontSize: 18, fontWeight: "600", marginBottom: 16 },
   input: {
     borderWidth: 1,
@@ -264,6 +291,16 @@ const styles = StyleSheet.create({
   multiInput: {
     minHeight: 90,
     textAlignVertical: "top",
+  },
+  logoPreviewWrap: {
+    marginTop: -6,
+    marginBottom: 18,
+    alignItems: "center",
+    gap: 8,
+  },
+  logoPreviewLabel: {
+    fontSize: 13,
+    fontWeight: "600",
   },
   unauthorizedText: {
     marginBottom: 12,
