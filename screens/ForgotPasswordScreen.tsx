@@ -20,35 +20,38 @@ export default function ForgotPasswordScreen() {
   const isValidEmail = (value: string) => /\S+@\S+\.\S+/.test(value);
 
   const handleSendOtp = async () => {
-    const trimmedEmail = email.trim();
+    const normalizedEmail = email.trim().toLowerCase();
 
-    if (!trimmedEmail) {
+    if (!normalizedEmail) {
       Alert.alert("Error", "Please enter your email.");
       return;
     }
 
-    if (!isValidEmail(trimmedEmail)) {
+    if (!isValidEmail(normalizedEmail)) {
       Alert.alert("Error", "Please enter a valid email address.");
       return;
     }
 
     setLoading(true);
+    console.log("[reset-otp] send otp", { email: normalizedEmail });
 
     const { error } = await supabase.auth.signInWithOtp({
-      email: trimmedEmail,
+      email: normalizedEmail,
       options: { shouldCreateUser: false },
     });
 
     setLoading(false);
 
     if (error) {
-      console.error("FORGOT_PASSWORD_OTP_ERROR", error);
       Alert.alert("Unable to send OTP", error.message || "Please try again.");
       return;
     }
 
-    Alert.alert("Success", "OTP sent to your email");
-    router.push({ pathname: "/reset-password", params: { email: trimmedEmail } });
+    Alert.alert("Success", "OTP sent to your email.");
+    router.push({
+      pathname: "/reset-password",
+      params: { email: normalizedEmail },
+    });
   };
 
   return (
@@ -60,7 +63,6 @@ export default function ForgotPasswordScreen() {
         <Text style={styles.title}>Forgot Password</Text>
 
         <Text style={styles.label}>Email</Text>
-
         <TextInput
           style={styles.input}
           placeholder="Enter your email"
