@@ -121,14 +121,26 @@ export default function ResetPasswordScreen() {
           autoCorrect={false}
         />
 
+        <Text style={styles.label}>OTP Code</Text>
         <TextInput
           style={styles.input}
-          placeholder="New password"
+          placeholder="Enter OTP code"
+          value={otp}
+          onChangeText={setOtp}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+
+        <Text style={styles.label}>New Password</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Enter new password"
           secureTextEntry
           value={newPassword}
           onChangeText={setNewPassword}
         />
 
+        <Text style={styles.label}>Confirm Password</Text>
         <TextInput
           style={styles.input}
           placeholder="Confirm password"

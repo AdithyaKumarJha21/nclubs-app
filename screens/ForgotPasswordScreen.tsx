@@ -59,6 +59,8 @@ export default function ForgotPasswordScreen() {
       <View style={styles.card}>
         <Text style={styles.title}>Forgot Password</Text>
 
+        <Text style={styles.label}>Email</Text>
+
         <TextInput
           style={styles.input}
           placeholder="Enter your email"
@@ -100,6 +102,12 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "700",
     marginBottom: 16,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#334155",
+    marginBottom: 6,
   },
   input: {
     borderWidth: 1,
