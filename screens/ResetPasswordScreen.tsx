@@ -1,8 +1,6 @@
-import * as Linking from "expo-linking";
-import { useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
@@ -14,105 +12,46 @@ import {
 } from "react-native";
 import { supabase } from "../services/supabase";
 
-type RecoveryTokens = {
-  accessToken: string;
-  refreshToken: string;
-};
-
-const getRecoveryTokensFromUrl = (url: string): RecoveryTokens | null => {
-  const hashPart = url.includes("#") ? url.split("#")[1] : "";
-  const queryPart = url.includes("?") ? url.split("?")[1].split("#")[0] : "";
-
-  const hashParams = new URLSearchParams(hashPart);
-  const queryParams = new URLSearchParams(queryPart);
-
-  const accessToken =
-    hashParams.get("access_token") ?? queryParams.get("access_token");
-  const refreshToken =
-    hashParams.get("refresh_token") ?? queryParams.get("refresh_token");
-
-  if (!accessToken || !refreshToken) {
-    return null;
-  }
-
-  return { accessToken, refreshToken };
-};
+const MIN_PASSWORD_LENGTH = 8;
 
 export default function ResetPasswordScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ email?: string | string[] }>();
+  const defaultEmail = useMemo(() => {
+    if (Array.isArray(params.email)) {
+      return params.email[0] ?? "";
+    }
 
+    return params.email ?? "";
+  }, [params.email]);
+
+  const [email, setEmail] = useState(defaultEmail);
+  const [otp, setOtp] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [isRecoveryReady, setIsRecoveryReady] = useState(false);
 
-  useEffect(() => {
-    let isMounted = true;
+  const canSubmit = useMemo(() => {
+    return (
+      email.trim().length > 0 &&
+      otp.trim().length > 0 &&
+      newPassword.length >= MIN_PASSWORD_LENGTH &&
+      confirmPassword.length >= MIN_PASSWORD_LENGTH &&
+      newPassword === confirmPassword &&
+      !loading
+    );
+  }, [confirmPassword, email, loading, newPassword, otp]);
 
-    const initializeRecoverySession = async () => {
-      const initialUrl = await Linking.getInitialURL();
+  const handleSubmit = async () => {
+    const trimmedEmail = email.trim();
+    const trimmedOtp = otp.trim();
 
-      if (initialUrl) {
-        const tokens = getRecoveryTokensFromUrl(initialUrl);
-
-        if (tokens) {
-          await supabase.auth.setSession({
-            access_token: tokens.accessToken,
-            refresh_token: tokens.refreshToken,
-          });
-        }
-      }
-
-      const { data } = await supabase.auth.getSession();
-
-      if (isMounted && data.session) {
-        setIsRecoveryReady(true);
-      }
-    };
-
-    initializeRecoverySession();
-
-    const linkingSubscription = Linking.addEventListener("url", async ({ url }) => {
-      const tokens = getRecoveryTokensFromUrl(url);
-
-      if (tokens) {
-        await supabase.auth.setSession({
-          access_token: tokens.accessToken,
-          refresh_token: tokens.refreshToken,
-        });
-      }
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      if (__DEV__) {
-        console.log("Auth event", event);
-      }
-
-      if (event === "PASSWORD_RECOVERY" || session) {
-        setIsRecoveryReady(true);
-      }
-    });
-
-    return () => {
-      isMounted = false;
-      subscription.unsubscribe();
-      linkingSubscription.remove();
-    };
-  }, []);
-
-  const isFormValid = useMemo(() => {
-    return newPassword.length >= 8 && newPassword === confirmPassword;
-  }, [confirmPassword, newPassword]);
-
-  const handleUpdatePassword = async () => {
-    if (!newPassword.trim() || !confirmPassword.trim()) {
-      Alert.alert("Error", "Please fill in both password fields.");
+    if (!trimmedEmail || !trimmedOtp || !newPassword || !confirmPassword) {
+      Alert.alert("Error", "Please fill in all fields.");
       return;
     }
 
-    if (newPassword.length < 8) {
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
       Alert.alert("Error", "Password must be at least 8 characters.");
       return;
     }
@@ -124,45 +63,63 @@ export default function ResetPasswordScreen() {
 
     setLoading(true);
 
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    const { error: verifyError } = await supabase.auth.verifyOtp({
+      email: trimmedEmail,
+      token: trimmedOtp,
+      type: "recovery",
+    });
 
-    setLoading(false);
-
-    if (error) {
-      Alert.alert("Error", error.message);
+    if (verifyError) {
+      console.error("RESET_PASSWORD_VERIFY_OTP_ERROR", verifyError);
+      setLoading(false);
+      Alert.alert("Unable to verify OTP", verifyError.message || "Please try again.");
       return;
     }
 
-    Alert.alert("Success", "Password updated", [
-      {
-        text: "OK",
-        onPress: async () => {
-          await supabase.auth.signOut();
-          router.replace("/login?reason=password_reset");
-        },
-      },
-    ]);
+    const { error: updateError } = await supabase.auth.updateUser({
+      password: newPassword,
+    });
+
+    if (updateError) {
+      console.error("RESET_PASSWORD_UPDATE_ERROR", updateError);
+      setLoading(false);
+      Alert.alert("Unable to update password", updateError.message || "Please try again.");
+      return;
+    }
+
+    Alert.alert("Success", "Password updated. You have been signed out.");
+    await supabase.auth.signOut();
+    setLoading(false);
+    router.replace("/login");
   };
 
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.select({ ios: "padding", android: undefined })}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <View style={styles.card}>
         <Text style={styles.title}>Reset Password</Text>
-        <Text style={styles.subtitle}>
-          Set a new password for your account.
-        </Text>
+        <Text style={styles.subtitle}>Enter the OTP from your email.</Text>
 
-        {!isRecoveryReady ? (
-          <View style={styles.pendingState}>
-            <ActivityIndicator color="#2563eb" />
-            <Text style={styles.pendingText}>
-              Open this screen from your password reset email link.
-            </Text>
-          </View>
-        ) : null}
+        <TextInput
+          style={styles.input}
+          placeholder="Email"
+          value={email}
+          onChangeText={setEmail}
+          autoCapitalize="none"
+          keyboardType="email-address"
+          autoCorrect={false}
+        />
+
+        <TextInput
+          style={styles.input}
+          placeholder="OTP code"
+          value={otp}
+          onChangeText={setOtp}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
 
         <TextInput
           style={styles.input}
@@ -174,22 +131,19 @@ export default function ResetPasswordScreen() {
 
         <TextInput
           style={styles.input}
-          placeholder="Confirm new password"
+          placeholder="Confirm password"
           secureTextEntry
           value={confirmPassword}
           onChangeText={setConfirmPassword}
         />
 
         <TouchableOpacity
-          style={[
-            styles.button,
-            (!isRecoveryReady || !isFormValid || loading) && styles.buttonDisabled,
-          ]}
-          onPress={handleUpdatePassword}
-          disabled={!isRecoveryReady || !isFormValid || loading}
+          style={[styles.button, !canSubmit && styles.buttonDisabled]}
+          onPress={handleSubmit}
+          disabled={!canSubmit}
         >
           <Text style={styles.buttonText}>
-            {loading ? "Updating..." : "Update Password"}
+            {loading ? "Updating..." : "Verify OTP & Update Password"}
           </Text>
         </TouchableOpacity>
       </View>
@@ -222,15 +176,6 @@ const styles = StyleSheet.create({
     color: "#475569",
     marginBottom: 16,
   },
-  pendingState: {
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  pendingText: {
-    marginTop: 8,
-    color: "#64748b",
-    textAlign: "center",
-  },
   input: {
     borderWidth: 1,
     borderColor: "#d1d5db",
@@ -251,5 +196,6 @@ const styles = StyleSheet.create({
     color: "white",
     fontWeight: "600",
     fontSize: 16,
+    textAlign: "center",
   },
 });
