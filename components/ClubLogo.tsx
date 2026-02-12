@@ -41,6 +41,7 @@ export default function ClubLogo({ logoUrl, clubName, size = 64, showErrorMessag
           contentFit="cover"
           cachePolicy="memory-disk"
           transition={120}
+          priority="low"
           style={styles.logo}
           onLoadStart={() => {
             setIsLoading(true);
