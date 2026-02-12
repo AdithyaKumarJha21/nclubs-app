@@ -22,6 +22,9 @@ import { canManageClub } from "../services/permissions";
 import { supabase } from "../services/supabase";
 import { useTheme } from "../theme/ThemeContext";
 
+const CLUB_COLUMNS_WITH_LOGO = "name, description, logo_url";
+const CLUB_COLUMNS_WITHOUT_LOGO = "name, description";
+
 export default function ClubProfileScreen() {
   const { theme } = useTheme();
   const { user, loading } = useAuth();
@@ -57,10 +60,10 @@ export default function ClubProfileScreen() {
     if (!normalizedClubId) return;
 
     const loadClub = async () => {
-      const [{ data: clubData, error: clubError }, { data: sectionData, error: sectionError }] = await Promise.all([
+      const [{ data: clubDataWithLogo, error: clubErrorWithLogo }, { data: sectionData, error: sectionError }] = await Promise.all([
         supabase
           .from("clubs")
-          .select("name, description, logo_url")
+          .select(CLUB_COLUMNS_WITH_LOGO)
           .eq("id", normalizedClubId)
           .maybeSingle(),
         supabase
@@ -69,6 +72,25 @@ export default function ClubProfileScreen() {
           .eq("club_id", normalizedClubId)
           .order("order_index"),
       ]);
+
+      let clubData = clubDataWithLogo;
+      let clubError = clubErrorWithLogo;
+
+      if (clubErrorWithLogo?.code === "42703") {
+        const fallbackClubResponse = await supabase
+          .from("clubs")
+          .select(CLUB_COLUMNS_WITHOUT_LOGO)
+          .eq("id", normalizedClubId)
+          .maybeSingle();
+
+        clubData = fallbackClubResponse.data
+          ? {
+              ...fallbackClubResponse.data,
+              logo_url: null,
+            }
+          : null;
+        clubError = fallbackClubResponse.error;
+      }
 
       if (clubError) {
         Alert.alert("Error", clubError.message);
@@ -127,7 +149,7 @@ export default function ClubProfileScreen() {
       return;
     }
 
-    const { error: clubError } = await supabase
+    let { error: clubError } = await supabase
       .from("clubs")
       .update({
         name: clubName,
@@ -135,6 +157,18 @@ export default function ClubProfileScreen() {
         logo_url: clubLogoUrl || null,
       })
       .eq("id", normalizedClubId);
+
+    if (clubError?.code === "42703") {
+      const fallbackUpdate = await supabase
+        .from("clubs")
+        .update({
+          name: clubName,
+          description: clubDescription,
+        })
+        .eq("id", normalizedClubId);
+
+      clubError = fallbackUpdate.error;
+    }
 
     if (clubError) {
       if (clubError.code === "42501") {
