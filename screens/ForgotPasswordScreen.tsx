@@ -1,4 +1,4 @@
-import * as Linking from "expo-linking";
+import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
   Alert,
@@ -13,45 +13,42 @@ import {
 import { supabase } from "../services/supabase";
 
 export default function ForgotPasswordScreen() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
 
   const isValidEmail = (value: string) => /\S+@\S+\.\S+/.test(value);
 
-  const handleResetPassword = async () => {
-    if (!email.trim()) {
+  const handleSendOtp = async () => {
+    const trimmedEmail = email.trim();
+
+    if (!trimmedEmail) {
       Alert.alert("Error", "Please enter your email.");
       return;
     }
 
-    if (!isValidEmail(email.trim())) {
+    if (!isValidEmail(trimmedEmail)) {
       Alert.alert("Error", "Please enter a valid email address.");
       return;
     }
 
-    const redirectTo = Linking.createURL("/reset-password");
-    console.log("FORGOT_PASSWORD_REDIRECT", redirectTo);
-
     setLoading(true);
 
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo,
+    const { error } = await supabase.auth.signInWithOtp({
+      email: trimmedEmail,
+      options: { shouldCreateUser: false },
     });
 
-    console.log("FORGOT_PASSWORD_RESULT", { hasError: Boolean(error) });
     setLoading(false);
 
     if (error) {
-      console.log("FORGOT_PASSWORD_ERROR", error.message);
-      Alert.alert(
-        "Unable to send reset email",
-        "Please try again in a moment.",
-      );
+      console.error("FORGOT_PASSWORD_OTP_ERROR", error);
+      Alert.alert("Unable to send OTP", error.message || "Please try again.");
       return;
     }
 
-    Alert.alert("Reset link sent. Open the email to continue.");
-    setEmail("");
+    Alert.alert("Success", "OTP sent to your email");
+    router.push({ pathname: "/reset-password", params: { email: trimmedEmail } });
   };
 
   return (
@@ -74,12 +71,10 @@ export default function ForgotPasswordScreen() {
 
         <TouchableOpacity
           style={styles.button}
-          onPress={handleResetPassword}
+          onPress={handleSendOtp}
           disabled={loading}
         >
-          <Text style={styles.buttonText}>
-            {loading ? "Sending..." : "Send Reset Link"}
-          </Text>
+          <Text style={styles.buttonText}>{loading ? "Sending..." : "Send OTP"}</Text>
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
