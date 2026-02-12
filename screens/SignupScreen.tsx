@@ -11,31 +11,7 @@ import {
   View,
 } from "react-native";
 import { supabase } from "../services/supabase";
-import { isValidEmail, sanitizeOtp } from "../utils/auth";
-
-type RoleName = "student" | "faculty" | "president" | "admin";
-
-type RoleRow = {
-  name: RoleName;
-};
-
-type ProfileWithRole = {
-  roles: RoleRow | RoleRow[] | null;
-};
-
-const OTP_LENGTH = 6;
-
-const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-const resolveRole = (profile: ProfileWithRole | null): RoleName | null => {
-  const roleValue = profile?.roles;
-
-  if (Array.isArray(roleValue)) {
-    return roleValue[0]?.name ?? null;
-  }
-
-  return roleValue?.name ?? null;
-};
+import { isValidEmail } from "../utils/auth";
 
 export default function SignupScreen() {
   const router = useRouter();
@@ -43,45 +19,22 @@ export default function SignupScreen() {
   const [name, setName] = useState("");
   const [usn, setUsn] = useState("");
   const [email, setEmail] = useState("");
-  const [otp, setOtp] = useState("");
-  const [otpSent, setOtpSent] = useState(false);
-  const [isSendingOtp, setIsSendingOtp] = useState(false);
-  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [infoMessage, setInfoMessage] = useState<string | null>(null);
 
   const getNormalizedEmail = () => email.trim().toLowerCase();
+  const trimmedPassword = password.trim();
+  const trimmedConfirmPassword = confirmPassword.trim();
+  const hasMinimumPasswordLength = trimmedPassword.length >= 8;
+  const hasNumberInPassword = /\d/.test(trimmedPassword);
+  const hasUppercaseInPassword = /[A-Z]/.test(trimmedPassword);
+  const passwordsMatch =
+    trimmedPassword.length > 0 && trimmedPassword === trimmedConfirmPassword;
 
-  const fetchAndRouteByRole = async (userId: string) => {
-    const { data: profile, error } = await supabase
-      .from("profiles")
-      .select("roles(name)")
-      .eq("id", userId)
-      .maybeSingle<ProfileWithRole>();
-
-    if (error) {
-      setErrorMessage(error.message);
-      return;
-    }
-
-    const role = resolveRole(profile);
-
-    if (role === "faculty" || role === "admin") {
-      router.replace("/faculty-home");
-      return;
-    }
-
-    if (role === "president") {
-      router.replace("/president-home");
-      return;
-    }
-
-    router.replace("/student-home");
-  };
-
-  const sendOtp = async () => {
+  const handleSignupPress = async () => {
     setErrorMessage(null);
-    setInfoMessage(null);
 
     const normalizedEmail = getNormalizedEmail();
 
@@ -95,9 +48,24 @@ export default function SignupScreen() {
       return;
     }
 
-    setIsSendingOtp(true);
+    if (!hasMinimumPasswordLength) {
+      setErrorMessage("Password must be at least 8 characters long.");
+      return;
+    }
 
-    console.log("OTP_SEND_REQUEST", { email: normalizedEmail });
+    if (!hasNumberInPassword || !hasUppercaseInPassword) {
+      setErrorMessage(
+        "Password must include at least one uppercase letter and one number."
+      );
+      return;
+    }
+
+    if (!passwordsMatch) {
+      setErrorMessage("Password and confirm password do not match.");
+      return;
+    }
+
+    setIsSubmitting(true);
 
     const { data: existingProfile, error: usnCheckError } = await supabase
       .from("profiles")
@@ -107,135 +75,39 @@ export default function SignupScreen() {
 
     if (existingProfile) {
       setErrorMessage("This USN is already registered.");
-      setIsSendingOtp(false);
+      setIsSubmitting(false);
       return;
     }
 
     if (usnCheckError) {
       setErrorMessage(usnCheckError.message);
-      setIsSendingOtp(false);
+      setIsSubmitting(false);
       return;
     }
 
-    const { error } = await supabase.auth.signInWithOtp({
+    const { error } = await supabase.auth.signUp({
       email: normalizedEmail,
+      password: trimmedPassword,
       options: {
-        shouldCreateUser: true,
+        data: {
+          name: name.trim(),
+          usn: usn.trim(),
+        },
       },
     });
 
-    setIsSendingOtp(false);
+    setIsSubmitting(false);
 
     if (error) {
       setErrorMessage(error.message);
       return;
     }
 
-    setOtpSent(true);
-    setInfoMessage("OTP sent. Enter the 6-digit code from your email.");
-  };
-
-  const verifyOtp = async () => {
-    setErrorMessage(null);
-    setInfoMessage(null);
-
-    const normalizedEmail = getNormalizedEmail();
-    const cleanedOtp = sanitizeOtp(otp);
-
-    if (!normalizedEmail) {
-      setErrorMessage("Missing email. Please re-enter your details.");
-      return;
-    }
-
-    if (cleanedOtp.length !== OTP_LENGTH) {
-      setErrorMessage("Please enter a valid 6-digit OTP.");
-      return;
-    }
-
-    setIsVerifyingOtp(true);
-
-    console.log("OTP_VERIFY_REQUEST", {
-      email: normalizedEmail,
-      tokenLen: cleanedOtp.length,
-    });
-
-    const { error: verifyError } = await supabase.auth.verifyOtp({
-      email: normalizedEmail,
-      token: cleanedOtp,
-      type: "email",
-    });
-
-    console.log("OTP_VERIFY_RESULT", {
-      ok: !verifyError,
-      error: verifyError?.message ?? null,
-    });
-
-    if (verifyError) {
-      const normalized = verifyError.message.toLowerCase();
-      if (normalized.includes("expired") || normalized.includes("invalid")) {
-        setErrorMessage("Invalid or expired OTP. Please request a new code.");
-      } else {
-        setErrorMessage(verifyError.message);
-      }
-      setIsVerifyingOtp(false);
-      return;
-    }
-
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError || !user?.id) {
-      setErrorMessage(userError?.message || "Unable to load signed-in user.");
-      setIsVerifyingOtp(false);
-      return;
-    }
-
-    const profilePayload = {
-      name: name.trim(),
-      usn: usn.trim(),
-      email: normalizedEmail,
-    };
-
-    let { error: updateError } = await supabase
-      .from("profiles")
-      .update(profilePayload)
-      .eq("id", user.id);
-
-    if (updateError) {
-      await delay(350);
-      const retryResult = await supabase
-        .from("profiles")
-        .update(profilePayload)
-        .eq("id", user.id);
-      updateError = retryResult.error;
-
-      if (updateError) {
-        const upsertResult = await supabase.from("profiles").upsert(
-          {
-            id: user.id,
-            ...profilePayload,
-          },
-          { onConflict: "id" }
-        );
-        updateError = upsertResult.error;
-      }
-    }
-
-    console.log("PROFILE_UPDATE_RESULT", {
-      userId: user.id,
-      error: updateError?.message ?? null,
-    });
-
-    if (updateError) {
-      setErrorMessage(updateError.message);
-      setIsVerifyingOtp(false);
-      return;
-    }
-
-    await fetchAndRouteByRole(user.id);
-    setIsVerifyingOtp(false);
+    router.push(
+      `/verify-otp?email=${encodeURIComponent(normalizedEmail)}&name=${encodeURIComponent(
+        name.trim()
+      )}&usn=${encodeURIComponent(usn.trim())}`
+    );
   };
 
   const handleLoginPress = () => {
@@ -250,7 +122,7 @@ export default function SignupScreen() {
       <View style={styles.card}>
         <Text style={styles.title}>Create your NCLUBS account ✨</Text>
         <Text style={styles.subtitle}>
-          Sign up with email OTP. No password required.
+          Create your account and verify your email with OTP.
         </Text>
 
         <View style={styles.inputGroup}>
@@ -260,7 +132,7 @@ export default function SignupScreen() {
             placeholder="Adithya Kumar Jha"
             value={name}
             onChangeText={setName}
-            editable={!otpSent && !isSendingOtp && !isVerifyingOtp}
+            editable={!isSubmitting}
           />
         </View>
 
@@ -272,7 +144,7 @@ export default function SignupScreen() {
             autoCapitalize="characters"
             value={usn}
             onChangeText={setUsn}
-            editable={!otpSent && !isSendingOtp && !isVerifyingOtp}
+            editable={!isSubmitting}
           />
         </View>
 
@@ -285,53 +157,51 @@ export default function SignupScreen() {
             autoCapitalize="none"
             value={email}
             onChangeText={setEmail}
-            editable={!otpSent && !isSendingOtp && !isVerifyingOtp}
+            editable={!isSubmitting}
           />
         </View>
 
-        {otpSent ? (
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>OTP</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter 6-digit OTP"
-              keyboardType="number-pad"
-              value={otp}
-              onChangeText={(value) => setOtp(sanitizeOtp(value))}
-              maxLength={OTP_LENGTH}
-              editable={!isVerifyingOtp}
-            />
-          </View>
-        ) : null}
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Password</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Create password"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            editable={!isSubmitting}
+          />
+        </View>
 
-        {infoMessage ? <Text style={styles.info}>{infoMessage}</Text> : null}
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Confirm Password</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Re-enter password"
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
+            secureTextEntry
+            editable={!isSubmitting}
+          />
+        </View>
+
+        <Text style={styles.info}>
+          Password must be at least 8 characters and include an uppercase letter
+          and a number.
+        </Text>
         {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
 
-        {otpSent ? (
-          <TouchableOpacity
-            style={styles.primaryButton}
-            onPress={verifyOtp}
-            disabled={isVerifyingOtp}
-          >
-            {isVerifyingOtp ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.primaryButtonText}>Verify OTP</Text>
-            )}
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={styles.primaryButton}
-            onPress={sendOtp}
-            disabled={isSendingOtp}
-          >
-            {isSendingOtp ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.primaryButtonText}>Send OTP</Text>
-            )}
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity
+          style={styles.primaryButton}
+          onPress={handleSignupPress}
+          disabled={isSubmitting}
+        >
+          {isSubmitting ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.primaryButtonText}>Create Account</Text>
+          )}
+        </TouchableOpacity>
 
         <TouchableOpacity onPress={handleLoginPress}>
           <Text style={styles.link}>Already registered? Login</Text>
