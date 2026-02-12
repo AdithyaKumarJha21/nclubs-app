@@ -16,7 +16,7 @@ import { supabase } from "../services/supabase";
 import { useTheme } from "../theme/ThemeContext";
 
 const CLUB_SELECT_TRIES = ["name, logo_url", "name"] as const;
-const CLUB_LOGO_BUCKET = "club-logos";
+const CLUB_LOGO_BUCKET_CANDIDATES = ["club-logos", "club_logos"] as const;
 const MAX_LOGO_FILE_SIZE_BYTES = 2 * 1024 * 1024;
 const ALLOWED_LOGO_MIME_TYPES = new Set(["image/jpeg", "image/png"]);
 const ALLOWED_LOGO_EXTENSIONS = new Set(["jpg", "jpeg", "png"]);
@@ -24,6 +24,13 @@ const ALLOWED_LOGO_EXTENSIONS = new Set(["jpg", "jpeg", "png"]);
 type ClubRowPartial = {
   name?: string | null;
   logo_url?: string | null;
+};
+
+const isBucketNotFoundError = (error: { message?: string; statusCode?: string | number } | null) => {
+  if (!error) return false;
+
+  const normalizedMessage = error.message?.toLowerCase() ?? "";
+  return normalizedMessage.includes("bucket not found") || error.statusCode === 404 || error.statusCode === "404";
 };
 
 export default function ClubProfileScreen() {
@@ -177,18 +184,28 @@ export default function ClubProfileScreen() {
       const fileResponse = await fetch(pendingLogoAsset.uri);
       const fileBuffer = await fileResponse.arrayBuffer();
 
-      const { error: uploadError } = await supabase.storage.from(CLUB_LOGO_BUCKET).upload(filePath, fileBuffer, {
-        upsert: true,
-        contentType: pendingLogoAsset.mimeType ?? "image/jpeg",
-      });
+      let lastUploadError: { message?: string; statusCode?: string | number } | null = null;
 
-      if (uploadError) {
-        Alert.alert("Logo upload failed", uploadError.message);
-        return null;
+      for (const bucketName of CLUB_LOGO_BUCKET_CANDIDATES) {
+        const { error: uploadError } = await supabase.storage.from(bucketName).upload(filePath, fileBuffer, {
+          upsert: true,
+          contentType: pendingLogoAsset.mimeType ?? "image/jpeg",
+        });
+
+        if (!uploadError) {
+          const { data: publicData } = supabase.storage.from(bucketName).getPublicUrl(filePath);
+          return publicData.publicUrl;
+        }
+
+        lastUploadError = uploadError;
+
+        if (!isBucketNotFoundError(uploadError)) {
+          break;
+        }
       }
 
-      const { data: publicData } = supabase.storage.from(CLUB_LOGO_BUCKET).getPublicUrl(filePath);
-      return publicData.publicUrl;
+      Alert.alert("Logo upload failed", lastUploadError?.message ?? "Unable to upload logo.");
+      return null;
     } catch (error) {
       Alert.alert("Logo upload failed", error instanceof Error ? error.message : "Unexpected upload error.");
       return null;
