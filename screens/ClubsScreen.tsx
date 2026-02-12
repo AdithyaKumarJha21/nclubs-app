@@ -12,12 +12,9 @@ type Club = {
   id: string;
   name: string;
   logo_url: string | null;
-  description: string | null;
 };
 
 const CLUB_SELECT_TRIES = [
-  "id, name, logo_url, description",
-  "id, name, description",
   "id, name, logo_url",
   "id, name",
 ] as const;
@@ -25,7 +22,6 @@ const CLUB_SELECT_TRIES = [
 type ClubRowPartial = {
   id: string;
   name: string;
-  description?: string | null;
   logo_url?: string | null;
 };
 
@@ -47,7 +43,7 @@ export default function ClubsScreen() {
       let data: ClubRowPartial[] | null = null;
       let error: { code?: string; message?: string } | null = null;
 
-      // ✅ Try progressively smaller selects to support schemas missing logo_url/description
+      // ✅ Try progressively smaller selects to support schemas missing logo_url
       for (const columns of CLUB_SELECT_TRIES) {
         const response = await supabase.from("clubs").select(columns).order("name");
 
@@ -70,7 +66,6 @@ export default function ClubsScreen() {
       const normalizedClubs: Club[] = (data ?? []).map((club) => ({
         id: club.id,
         name: club.name,
-        description: club.description ?? null,
         logo_url: club.logo_url ?? null,
       }));
 
@@ -91,14 +86,9 @@ export default function ClubsScreen() {
   const filteredClubs = useMemo(() => {
     if (!normalizedQuery) return clubs;
 
-    return clubs.filter((club) => {
-      const nameMatch = club.name.toLowerCase().includes(normalizedQuery);
-      const descriptionMatch = club.description
-        ? club.description.toLowerCase().includes(normalizedQuery)
-        : false;
-
-      return nameMatch || descriptionMatch;
-    });
+    return clubs.filter((club) =>
+      club.name.toLowerCase().includes(normalizedQuery)
+    );
   }, [clubs, normalizedQuery]);
 
   const title = user?.role === "student" ? "View Clubs" : "Manage Clubs";

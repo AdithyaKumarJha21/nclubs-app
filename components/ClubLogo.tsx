@@ -40,6 +40,7 @@ export default function ClubLogo({ logoUrl, clubName, size = 64, showErrorMessag
           source={{ uri: normalizedUrl, cacheKey: normalizedUrl }}
           contentFit="cover"
           cachePolicy="memory-disk"
+          priority="low"
           transition={120}
           style={styles.logo}
           onLoadStart={() => {

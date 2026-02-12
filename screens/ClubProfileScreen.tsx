@@ -1,14 +1,7 @@
+import * as DocumentPicker from "expo-document-picker";
 import { useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
-import {
-  Alert,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 import ClubGallery from "../components/ClubGallery";
 import ClubLogo from "../components/ClubLogo";
@@ -22,16 +15,14 @@ import { canManageClub } from "../services/permissions";
 import { supabase } from "../services/supabase";
 import { useTheme } from "../theme/ThemeContext";
 
-const CLUB_SELECT_TRIES = [
-  "name, description, logo_url",
-  "name, description",
-  "name, logo_url",
-  "name",
-] as const;
+const CLUB_SELECT_TRIES = ["name, logo_url", "name"] as const;
+const CLUB_LOGO_BUCKET = "club-logos";
+const MAX_LOGO_FILE_SIZE_BYTES = 2 * 1024 * 1024;
+const ALLOWED_LOGO_MIME_TYPES = new Set(["image/jpeg", "image/png"]);
+const ALLOWED_LOGO_EXTENSIONS = new Set(["jpg", "jpeg", "png"]);
 
 type ClubRowPartial = {
   name?: string | null;
-  description?: string | null;
   logo_url?: string | null;
 };
 
@@ -40,32 +31,24 @@ export default function ClubProfileScreen() {
   const { user, loading } = useAuth();
   const { clubId } = useLocalSearchParams<{ clubId?: string | string[] }>();
 
-  // ✅ normalize route param
-  const normalizedClubId =
-    typeof clubId === "string"
-      ? clubId
-      : Array.isArray(clubId)
-      ? clubId[0]
-      : null;
+  const normalizedClubId = typeof clubId === "string" ? clubId : Array.isArray(clubId) ? clubId[0] : null;
 
   const { isEditing, startEdit, cancelEdit } = useEditMode();
-  const isStudent = user?.role === "student";
 
   const [isManager, setIsManager] = useState(false);
   const [isCheckingPermission, setIsCheckingPermission] = useState(true);
   const [isLoadingClub, setIsLoadingClub] = useState(true);
 
   const [clubName, setClubName] = useState("");
-  const [clubDescription, setClubDescription] = useState("");
   const [clubLogoUrl, setClubLogoUrl] = useState("");
+  const [pendingLogoAsset, setPendingLogoAsset] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
+  const [removeLogoOnSave, setRemoveLogoOnSave] = useState(false);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 
   const [about, setAbout] = useState("");
   const [whatToExpect, setWhatToExpect] = useState("");
   const [achievements, setAchievements] = useState("");
 
-  /* ===============================
-     1️⃣ FETCH CLUB CONTENT
-     =============================== */
   useEffect(() => {
     if (!normalizedClubId) return;
 
@@ -81,18 +64,12 @@ export default function ClubProfileScreen() {
       let clubData: ClubRowPartial | null = null;
       let clubError: { code?: string; message: string } | null = null;
 
-      // Try progressively smaller selects to support schemas missing logo_url
       for (const columns of CLUB_SELECT_TRIES) {
-        const response = await supabase
-          .from("clubs")
-          .select(columns)
-          .eq("id", normalizedClubId)
-          .maybeSingle();
+        const response = await supabase.from("clubs").select(columns).eq("id", normalizedClubId).maybeSingle();
 
         clubData = (response.data as ClubRowPartial) ?? null;
         clubError = response.error;
 
-        // If not "column does not exist" -> stop trying
         if (!clubError || clubError.code !== "42703") break;
       }
 
@@ -109,16 +86,11 @@ export default function ClubProfileScreen() {
       }
 
       setClubName(clubData?.name ?? "");
-      setClubDescription(clubData?.description ?? "");
       setClubLogoUrl(clubData?.logo_url ?? "");
 
       setAbout(sectionData?.find((s) => s.title === "About Us")?.content ?? "");
-      setWhatToExpect(
-        sectionData?.find((s) => s.title === "What to Expect")?.content ?? ""
-      );
-      setAchievements(
-        sectionData?.find((s) => s.title === "Achievements")?.content ?? ""
-      );
+      setWhatToExpect(sectionData?.find((s) => s.title === "What to Expect")?.content ?? "");
+      setAchievements(sectionData?.find((s) => s.title === "Achievements")?.content ?? "");
 
       setIsLoadingClub(false);
     };
@@ -126,9 +98,6 @@ export default function ClubProfileScreen() {
     loadClub();
   }, [normalizedClubId]);
 
-  /* ===============================
-     2️⃣ PERMISSIONS
-     =============================== */
   useEffect(() => {
     if (!user || !normalizedClubId) {
       setIsCheckingPermission(false);
@@ -148,29 +117,103 @@ export default function ClubProfileScreen() {
 
   if (loading || isLoadingClub || isCheckingPermission) return null;
 
-  /* ===============================
-     3️⃣ SAVE EDIT
-     =============================== */
+  const displayedLogoUrl = removeLogoOnSave ? "" : pendingLogoAsset?.uri ?? clubLogoUrl;
+
+  const validateLogoAsset = (asset: DocumentPicker.DocumentPickerAsset) => {
+    const mimeType = (asset.mimeType ?? "").toLowerCase();
+    const extension = asset.name?.split(".").pop()?.toLowerCase() ?? "";
+
+    if (!ALLOWED_LOGO_MIME_TYPES.has(mimeType) && !ALLOWED_LOGO_EXTENSIONS.has(extension)) {
+      Alert.alert("Invalid format", "Please choose a JPEG or PNG image (.jpg, .jpeg, .png).");
+      return false;
+    }
+
+    if ((asset.size ?? 0) > MAX_LOGO_FILE_SIZE_BYTES) {
+      Alert.alert("File too large", "Club logo must be 2MB or smaller.");
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleChooseLogo = async () => {
+    if (!isEditing || !isManager) return;
+
+    const result = await DocumentPicker.getDocumentAsync({
+      type: ["image/jpeg", "image/png"],
+      copyToCacheDirectory: true,
+      multiple: false,
+    });
+
+    if (result.canceled) return;
+
+    const pickedAsset = result.assets[0];
+    if (!pickedAsset || !validateLogoAsset(pickedAsset)) {
+      return;
+    }
+
+    setPendingLogoAsset(pickedAsset);
+    setRemoveLogoOnSave(false);
+  };
+
+  const handleRemoveLogo = () => {
+    if (!isEditing || !isManager) return;
+    setPendingLogoAsset(null);
+    setRemoveLogoOnSave(true);
+  };
+
+  const uploadPendingLogoIfAny = async () => {
+    if (!pendingLogoAsset || !normalizedClubId) {
+      return removeLogoOnSave ? "" : clubLogoUrl;
+    }
+
+    setIsUploadingLogo(true);
+
+    const fileExt = pendingLogoAsset.name?.split(".").pop()?.toLowerCase() ?? "jpg";
+    const fileName = `${normalizedClubId}-${Date.now()}.${fileExt}`;
+    const filePath = `${normalizedClubId}/${fileName}`;
+
+    try {
+      const fileResponse = await fetch(pendingLogoAsset.uri);
+      const fileBuffer = await fileResponse.arrayBuffer();
+
+      const { error: uploadError } = await supabase.storage.from(CLUB_LOGO_BUCKET).upload(filePath, fileBuffer, {
+        upsert: true,
+        contentType: pendingLogoAsset.mimeType ?? "image/jpeg",
+      });
+
+      if (uploadError) {
+        Alert.alert("Logo upload failed", uploadError.message);
+        return null;
+      }
+
+      const { data: publicData } = supabase.storage.from(CLUB_LOGO_BUCKET).getPublicUrl(filePath);
+      return publicData.publicUrl;
+    } catch (error) {
+      Alert.alert("Logo upload failed", error instanceof Error ? error.message : "Unexpected upload error.");
+      return null;
+    } finally {
+      setIsUploadingLogo(false);
+    }
+  };
+
   const handleSaveEdit = async () => {
     if (!isManager || !normalizedClubId) {
       Alert.alert("Not authorized", "Not authorized to edit this club.");
       return;
     }
 
-    // Try progressively smaller updates to support schemas missing logo_url
+    const uploadedLogoUrl = await uploadPendingLogoIfAny();
+    if (uploadedLogoUrl === null) {
+      return;
+    }
+
+    const nextLogoUrl = removeLogoOnSave ? "" : uploadedLogoUrl;
+
     const updatePayloadTries = [
       {
         name: clubName,
-        description: clubDescription,
-        logo_url: clubLogoUrl || null,
-      },
-      {
-        name: clubName,
-        description: clubDescription,
-      },
-      {
-        name: clubName,
-        logo_url: clubLogoUrl || null,
+        logo_url: nextLogoUrl || null,
       },
       {
         name: clubName,
@@ -180,17 +223,11 @@ export default function ClubProfileScreen() {
     let clubError: { code?: string; message: string } | null = null;
 
     for (const payload of updatePayloadTries) {
-      const response = await supabase
-        .from("clubs")
-        .update(payload)
-        .eq("id", normalizedClubId);
+      const response = await supabase.from("clubs").update(payload).eq("id", normalizedClubId);
 
       clubError = response.error;
 
-      // If missing column -> try smaller payload
       if (clubError?.code === "42703") continue;
-
-      // success or other error -> stop
       break;
     }
 
@@ -241,17 +278,19 @@ export default function ClubProfileScreen() {
       return;
     }
 
+    setClubLogoUrl(nextLogoUrl || "");
+    setPendingLogoAsset(null);
+    setRemoveLogoOnSave(false);
+    Alert.alert("Success", "Club details saved.");
     cancelEdit();
   };
 
   return (
-    <ScrollView
-      style={[styles.container, { backgroundColor: theme.background }]}
-    >
+    <ScrollView style={[styles.container, { backgroundColor: theme.background }]}>
       <Text style={[styles.clubName, { color: theme.text }]}>Club Profile</Text>
 
       <View style={styles.logoDisplayWrap}>
-        <ClubLogo logoUrl={clubLogoUrl} clubName={clubName} size={120} />
+        <ClubLogo logoUrl={displayedLogoUrl} clubName={clubName} size={120} />
         <Text style={[styles.logoHint, { color: theme.text }]}>Club Logo</Text>
       </View>
 
@@ -265,62 +304,54 @@ export default function ClubProfileScreen() {
           placeholderTextColor="#6b7280"
         />
       ) : (
-        <Text style={[styles.readOnlyValue, { color: theme.text }]}>
-          {clubName}
-        </Text>
+        <Text style={[styles.readOnlyValue, { color: theme.text }]}>{clubName}</Text>
       )}
 
-      <Text style={[styles.fieldLabel, { color: theme.text }]}>Description</Text>
-      <TextInput
-        style={[
-          styles.input,
-          styles.multiInput,
-          { color: theme.text, borderColor: "#9ca3af" },
-        ]}
-        value={clubDescription}
-        editable={isEditing && isManager}
-        onChangeText={setClubDescription}
-        multiline
-        placeholder="Club description"
-        placeholderTextColor="#6b7280"
-      />
-
-      {!isStudent && (
+      {isManager ? (
         <>
-          <Text style={[styles.fieldLabel, { color: theme.text }]}>Logo URL</Text>
-          <TextInput
-            style={[styles.input, { color: theme.text, borderColor: "#9ca3af" }]}
-            value={clubLogoUrl}
-            editable={isEditing && isManager}
-            onChangeText={setClubLogoUrl}
-            autoCapitalize="none"
-            placeholder="https://..."
-            placeholderTextColor="#6b7280"
-          />
+          <Text style={[styles.fieldLabel, { color: theme.text }]}>Club Logo Uploader</Text>
 
-          {isEditing && isManager ? (
+          {isEditing ? (
+            <View style={styles.logoActionsRow}>
+              <TouchableOpacity style={styles.logoButton} onPress={handleChooseLogo}>
+                <Text style={styles.logoButtonText}>{displayedLogoUrl ? "Change Logo" : "Choose Image"}</Text>
+              </TouchableOpacity>
+
+              {displayedLogoUrl ? (
+                <TouchableOpacity style={[styles.logoButton, styles.logoRemoveButton]} onPress={handleRemoveLogo}>
+                  <Text style={styles.logoButtonText}>Remove</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          ) : null}
+
+          <Text style={[styles.logoConstraintText, { color: theme.text }]}>JPEG/PNG only, max size 2MB</Text>
+
+          {isEditing ? (
             <View style={styles.logoPreviewWrap}>
-              <Text style={[styles.logoPreviewLabel, { color: theme.text }]}>
-                Live preview
-              </Text>
-              <ClubLogo
-                logoUrl={clubLogoUrl}
-                clubName={clubName}
-                size={88}
-                showErrorMessage
-              />
+              <Text style={[styles.logoPreviewLabel, { color: theme.text }]}>Live preview</Text>
+              <ClubLogo logoUrl={displayedLogoUrl} clubName={clubName} size={88} showErrorMessage />
+              {pendingLogoAsset ? (
+                <Text style={[styles.logoFileName, { color: theme.text }]}>{pendingLogoAsset.name}</Text>
+              ) : null}
             </View>
           ) : null}
         </>
-      )}
+      ) : null}
 
       {isManager &&
         (isEditing ? (
           <View style={{ flexDirection: "row", gap: 16, marginBottom: 20 }}>
-            <TouchableOpacity onPress={handleSaveEdit}>
-              <Text style={{ color: "green", fontWeight: "600" }}>Save</Text>
+            <TouchableOpacity onPress={handleSaveEdit} disabled={isUploadingLogo}>
+              <Text style={{ color: "green", fontWeight: "600" }}>{isUploadingLogo ? "Uploading..." : "Save"}</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={cancelEdit}>
+            <TouchableOpacity
+              onPress={() => {
+                setPendingLogoAsset(null);
+                setRemoveLogoOnSave(false);
+                cancelEdit();
+              }}
+            >
               <Text style={{ color: "red", fontWeight: "600" }}>Cancel</Text>
             </TouchableOpacity>
           </View>
@@ -330,30 +361,16 @@ export default function ClubProfileScreen() {
           </TouchableOpacity>
         ))}
 
-      {!isManager && (
-        <Text style={[styles.unauthorizedText, { color: theme.text }]}>
-          Not authorized to edit this club.
-        </Text>
-      )}
+      {!isManager && <Text style={[styles.unauthorizedText, { color: theme.text }]}>Not authorized to edit this club.</Text>}
 
-      <EditableTextSection
-        title="About Us"
-        value={about}
-        isEditing={isEditing && isManager}
-        onChange={setAbout}
-      />
+      <EditableTextSection title="About Us" value={about} isEditing={isEditing && isManager} onChange={setAbout} />
       <EditableTextSection
         title="What to Expect"
         value={whatToExpect}
         isEditing={isEditing && isManager}
         onChange={setWhatToExpect}
       />
-      <EditableTextSection
-        title="Achievements"
-        value={achievements}
-        isEditing={isEditing && isManager}
-        onChange={setAchievements}
-      />
+      <EditableTextSection title="Achievements" value={achievements} isEditing={isEditing && isManager} onChange={setAchievements} />
 
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: theme.text }]}>Gallery</Text>
@@ -391,9 +408,28 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     marginBottom: 16,
   },
-  multiInput: {
-    minHeight: 90,
-    textAlignVertical: "top",
+  logoActionsRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 8,
+  },
+  logoButton: {
+    backgroundColor: "#2563eb",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  logoRemoveButton: {
+    backgroundColor: "#dc2626",
+  },
+  logoButtonText: {
+    color: "#fff",
+    fontWeight: "600",
+  },
+  logoConstraintText: {
+    fontSize: 12,
+    marginBottom: 8,
+    opacity: 0.75,
   },
   logoPreviewWrap: {
     marginTop: -6,
@@ -405,6 +441,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
   },
+  logoFileName: {
+    fontSize: 12,
+    opacity: 0.8,
+  },
   unauthorizedText: {
     marginBottom: 12,
     fontSize: 13,
@@ -412,4 +452,3 @@ const styles = StyleSheet.create({
   section: { marginBottom: 24 },
   sectionTitle: { fontSize: 20, fontWeight: "600", marginBottom: 8 },
 });
-
