@@ -25,6 +25,15 @@ type ClubRowPartial = {
   logo_url?: string | null;
 };
 
+type ClubFileLogoRow = {
+  club_id: string;
+  bucket: string;
+  path: string;
+  file_type?: string | null;
+  title?: string | null;
+  created_at?: string | null;
+};
+
 export default function ClubsScreen() {
   const router = useRouter();
   const { theme } = useTheme();
@@ -63,10 +72,27 @@ export default function ClubsScreen() {
         return;
       }
 
+      const { data: clubFileRows } = await supabase
+        .from("club_files")
+        .select("club_id, bucket, path, file_type, title, created_at")
+        .order("created_at", { ascending: false });
+
+      const latestLogoByClub = new Map<string, string>();
+
+      for (const row of ((clubFileRows as ClubFileLogoRow[] | null) ?? [])) {
+        if (latestLogoByClub.has(row.club_id)) continue;
+
+        const isLogo = row.file_type === "logo" || row.title === "Club Logo";
+        if (!isLogo) continue;
+
+        const publicUrl = supabase.storage.from(row.bucket).getPublicUrl(row.path).data.publicUrl;
+        latestLogoByClub.set(row.club_id, publicUrl);
+      }
+
       const normalizedClubs: Club[] = (data ?? []).map((club) => ({
         id: club.id,
         name: club.name,
-        logo_url: club.logo_url ?? null,
+        logo_url: club.logo_url ?? latestLogoByClub.get(club.id) ?? null,
       }));
 
       setClubs(normalizedClubs);
