@@ -1,68 +1,40 @@
-import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { supabase } from "../services/supabase";
 
-type RoleRow = {
-  name: "student" | "faculty" | "president" | "admin";
-};
-
 export default function AuthCallbackScreen() {
   const router = useRouter();
-  const [statusText, setStatusText] = useState("Confirming…");
+  const params = useLocalSearchParams<{ type?: string | string[] }>();
+  const [statusText, setStatusText] = useState("Processing link…");
+
+  const callbackType = useMemo(() => {
+    const paramValue = Array.isArray(params.type) ? params.type[0] : params.type;
+    return (paramValue ?? "").toLowerCase();
+  }, [params.type]);
 
   useEffect(() => {
     const resolveAuthCallback = async () => {
       const {
         data: { session },
-        error,
       } = await supabase.auth.getSession();
 
-      if (error) {
-        console.error("[auth-callback] getSession error", error.message);
-        setStatusText("Email confirmed. Please log in.");
+      if (callbackType === "recovery") {
+        if (session?.user) {
+          setStatusText("Redirecting to password reset…");
+          router.replace("/reset-password");
+          return;
+        }
+
+        setStatusText("Reset link opened. Please request a new OTP from Forgot Password.");
         return;
       }
 
-      if (!session?.user) {
-        console.log("[auth-callback] no session after confirmation");
-        setStatusText("Email confirmed. Please log in.");
-        return;
-      }
-
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select("roles(name)")
-        .eq("id", session.user.id)
-        .single();
-
-      if (profileError || !profile?.roles) {
-        console.warn("[auth-callback] role lookup failed, sending to login", {
-          message: profileError?.message,
-        });
-        router.replace("/login");
-        return;
-      }
-
-      const roleRow = Array.isArray(profile.roles)
-        ? (profile.roles[0] as RoleRow)
-        : (profile.roles as RoleRow);
-
-      if (roleRow?.name === "president") {
-        router.replace("/president-home");
-        return;
-      }
-
-      if (roleRow?.name === "faculty" || roleRow?.name === "admin") {
-        router.replace("/faculty-login");
-        return;
-      }
-
-      router.replace("/student-home");
+      setStatusText("This link is not required for OTP login. Please return to Login.");
     };
 
     resolveAuthCallback();
-  }, [router]);
+  }, [callbackType, router]);
 
   return (
     <View style={styles.container}>

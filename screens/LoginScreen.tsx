@@ -1,5 +1,4 @@
 import { Ionicons } from "@expo/vector-icons";
-import * as Linking from "expo-linking";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -24,14 +23,12 @@ export default function LoginScreen() {
     signedOut?: string;
     reason?: string;
     email?: string;
-    pendingConfirm?: string;
   }>();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isResendingConfirmation, setIsResendingConfirmation] = useState(false);
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
 
   const isValidEmail = (value: string) => /\S+@\S+\.\S+/.test(value);
@@ -40,16 +37,13 @@ export default function LoginScreen() {
       return "Password updated. Please log in with your new password.";
     }
 
-    if (params.pendingConfirm === "1") {
-      return "Confirmation email requested. Check inbox/spam, then tap Resend confirmation email once if needed.";
-    }
 
     if (params.signedOut === "1" || params.reason === "signed_out") {
       return "You have been signed out.";
     }
 
     return null;
-  }, [params.pendingConfirm, params.reason, params.signedOut]);
+  }, [params.reason, params.signedOut]);
 
 
   useEffect(() => {
@@ -142,44 +136,6 @@ export default function LoginScreen() {
     router.push("/faculty-login");
   };
 
-  const handleResendConfirmationPress = async () => {
-    setErrorMessage(null);
-
-    const normalizedEmail = email.trim().toLowerCase();
-
-    if (!normalizedEmail) {
-      setErrorMessage("Enter your email first to resend confirmation.");
-      return;
-    }
-
-    if (!isValidEmail(normalizedEmail)) {
-      setErrorMessage("Please enter a valid email address.");
-      return;
-    }
-
-    const emailRedirectTo = Linking.createURL("/auth-callback");
-    console.log("[auth] resend signup emailRedirectTo", emailRedirectTo);
-
-    setIsResendingConfirmation(true);
-
-    const { error } = await supabase.auth.resend({
-      type: "signup",
-      email: normalizedEmail,
-      options: {
-        emailRedirectTo,
-      },
-    });
-
-    if (error) {
-      setErrorMessage(error.message);
-      setIsResendingConfirmation(false);
-      return;
-    }
-
-    setErrorMessage("Confirmation email sent. Please check your inbox and spam folder.");
-    setIsResendingConfirmation(false);
-  };
-
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -249,16 +205,6 @@ export default function LoginScreen() {
           <Text style={styles.registerLink}>New user? Register</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          onPress={handleResendConfirmationPress}
-          disabled={isResendingConfirmation || isSubmitting}
-        >
-          <Text style={styles.registerLink}>
-            {isResendingConfirmation
-              ? "Resending confirmation..."
-              : "Resend confirmation email"}
-          </Text>
-        </TouchableOpacity>
 
         <TouchableOpacity onPress={handleFacultyLoginPress}>
           <Text style={styles.facultyLink}>Login as Faculty</Text>

@@ -11,14 +11,35 @@ import {
   View,
 } from "react-native";
 import { supabase } from "../services/supabase";
+import { sanitizeOtp } from "../utils/auth";
+
+type RoleName = "student" | "faculty" | "president" | "admin";
 
 type RoleRow = {
-  name: "student" | "faculty" | "president" | "admin";
+  name: RoleName;
 };
+
+type ProfileWithRole = {
+  roles: RoleRow | RoleRow[] | null;
+};
+
+const OTP_LENGTH = 6;
+
+const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 const isInvalidVerifyTypeError = (message?: string) => {
   const normalized = message?.toLowerCase() || "";
   return normalized.includes("invalid") && normalized.includes("type");
+};
+
+const resolveRole = (profile: ProfileWithRole | null): RoleName | null => {
+  const roleValue = profile?.roles;
+
+  if (Array.isArray(roleValue)) {
+    return roleValue[0]?.name ?? null;
+  }
+
+  return roleValue?.name ?? null;
 };
 
 export default function VerifyOtpScreen() {
@@ -41,7 +62,7 @@ export default function VerifyOtpScreen() {
   const verifyWithFallback = async () => {
     const primary = await supabase.auth.verifyOtp({
       email,
-      token: otp,
+      token: sanitizeOtp(otp),
       type: "email",
     });
 
@@ -55,7 +76,7 @@ export default function VerifyOtpScreen() {
 
     return supabase.auth.verifyOtp({
       email,
-      token: otp,
+      token: sanitizeOtp(otp),
       type: "signup",
     });
   };
@@ -68,23 +89,33 @@ export default function VerifyOtpScreen() {
       return;
     }
 
-    if (otp.trim().length !== 6) {
+    const cleanedOtp = sanitizeOtp(otp);
+
+    if (cleanedOtp.length !== OTP_LENGTH) {
       setMessage("Please enter the 6-digit OTP.");
       return;
     }
 
     setIsVerifying(true);
-    console.log("[otp] verify request", { email });
+    console.log("OTP_VERIFY_REQUEST", { email, tokenLen: cleanedOtp.length });
 
     const { error } = await verifyWithFallback();
 
+    console.log("OTP_VERIFY_RESULT", {
+      ok: !error,
+      error: error?.message ?? null,
+    });
+
     if (error) {
-      setMessage(error.message);
+      const normalized = error.message.toLowerCase();
+      if (normalized.includes("expired") || normalized.includes("invalid")) {
+        setMessage("Invalid or expired OTP. Please request a new code.");
+      } else {
+        setMessage(error.message);
+      }
       setIsVerifying(false);
       return;
     }
-
-    console.log("[otp] verify success");
 
     const {
       data: { user },
@@ -97,15 +128,41 @@ export default function VerifyOtpScreen() {
       return;
     }
 
-    const { data: profileData, error: profileError } = await supabase
+    const profilePayload = {
+      name,
+      usn,
+      email,
+    };
+
+    let { error: profileError } = await supabase
       .from("profiles")
-      .update({
-        name,
-        usn,
-      })
-      .eq("id", user.id)
-      .select("roles(name)")
-      .single();
+      .update(profilePayload)
+      .eq("id", user.id);
+
+    if (profileError) {
+      await delay(350);
+      const retryResult = await supabase
+        .from("profiles")
+        .update(profilePayload)
+        .eq("id", user.id);
+      profileError = retryResult.error;
+
+      if (profileError) {
+        const upsertResult = await supabase.from("profiles").upsert(
+          {
+            id: user.id,
+            ...profilePayload,
+          },
+          { onConflict: "id" }
+        );
+        profileError = upsertResult.error;
+      }
+    }
+
+    console.log("PROFILE_UPDATE_RESULT", {
+      userId: user.id,
+      error: profileError?.message ?? null,
+    });
 
     if (profileError) {
       setMessage(profileError.message);
@@ -113,22 +170,20 @@ export default function VerifyOtpScreen() {
       return;
     }
 
-    console.log("[otp] profile updated");
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("roles(name)")
+      .eq("id", user.id)
+      .maybeSingle<ProfileWithRole>();
 
-    const roleRow = Array.isArray(profileData?.roles)
-      ? (profileData.roles[0] as RoleRow)
-      : (profileData?.roles as RoleRow | null);
-
-    const role = roleRow?.name;
+    const role = resolveRole(profile);
 
     if (role === "faculty" || role === "admin") {
       router.replace("/faculty-home");
     } else if (role === "president") {
       router.replace("/president-home");
-    } else if (role === "student") {
-      router.replace("/student-home");
     } else {
-      router.replace("/login");
+      router.replace("/student-home");
     }
 
     setIsVerifying(false);
@@ -143,31 +198,24 @@ export default function VerifyOtpScreen() {
     }
 
     setIsResending(true);
-    console.log("[otp] resend requested");
+    console.log("OTP_SEND_REQUEST", { email });
 
-    let resendError: string | null = null;
+    const { error } = await supabase.auth.resend({
+      email,
+      type: "signup",
+    });
 
-    if (typeof supabase.auth.resend === "function") {
-      const { error } = await supabase.auth.resend({
+    if (error) {
+      const { error: otpError } = await supabase.auth.signInWithOtp({
         email,
-        type: "signup",
+        options: { shouldCreateUser: true },
       });
 
-      if (!error) {
-        setMessage("OTP resent successfully.");
+      if (otpError) {
+        setMessage(otpError.message || error.message || "Unable to resend OTP.");
         setIsResending(false);
         return;
       }
-
-      resendError = error.message;
-    }
-
-    const { error: otpError } = await supabase.auth.signInWithOtp({ email });
-
-    if (otpError) {
-      setMessage(otpError.message || resendError || "Unable to resend OTP.");
-      setIsResending(false);
-      return;
     }
 
     setMessage("A new OTP has been sent to your email.");
@@ -195,10 +243,10 @@ export default function VerifyOtpScreen() {
           <TextInput
             style={styles.input}
             value={otp}
-            onChangeText={(value) => setOtp(value.replace(/[^0-9]/g, "").slice(0, 6))}
+            onChangeText={(value) => setOtp(sanitizeOtp(value))}
             placeholder="Enter OTP"
             keyboardType="number-pad"
-            maxLength={6}
+            maxLength={OTP_LENGTH}
           />
         </View>
 
@@ -272,55 +320,54 @@ const styles = StyleSheet.create({
   input: {
     borderWidth: 1,
     borderColor: "#d1d5db",
-    borderRadius: 8,
+    borderRadius: 10,
     paddingHorizontal: 12,
-    paddingVertical: 9,
-    fontSize: 14,
-    backgroundColor: "#f9fafb",
+    paddingVertical: 10,
+    fontSize: 15,
+    backgroundColor: "#fff",
   },
   readonlyInput: {
     borderWidth: 1,
     borderColor: "#e5e7eb",
-    borderRadius: 8,
+    borderRadius: 10,
     paddingHorizontal: 12,
-    paddingVertical: 9,
-    fontSize: 14,
+    paddingVertical: 10,
+    fontSize: 15,
     backgroundColor: "#f3f4f6",
     color: "#6b7280",
   },
   message: {
-    fontSize: 12,
     color: "#dc2626",
-    marginBottom: 8,
+    fontSize: 13,
+    marginBottom: 12,
   },
   verifyButton: {
-    backgroundColor: "#16a34a",
-    paddingVertical: 12,
+    backgroundColor: "#2563eb",
     borderRadius: 10,
+    paddingVertical: 12,
     alignItems: "center",
-    marginTop: 8,
     marginBottom: 10,
   },
   verifyButtonText: {
     color: "white",
-    fontSize: 16,
     fontWeight: "600",
+    fontSize: 15,
   },
   secondaryButton: {
-    backgroundColor: "#e2e8f0",
-    paddingVertical: 12,
     borderRadius: 10,
+    paddingVertical: 12,
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    marginBottom: 12,
   },
   secondaryButtonText: {
-    color: "#0f172a",
-    fontSize: 14,
+    color: "#334155",
     fontWeight: "600",
   },
   backLink: {
-    marginTop: 12,
-    color: "#2563eb",
     textAlign: "center",
-    fontSize: 13,
+    color: "#2563eb",
+    fontWeight: "500",
   },
 });
