@@ -1,6 +1,6 @@
 import * as DocumentPicker from "expo-document-picker";
 import { useLocalSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Alert,
   ScrollView,
@@ -93,79 +93,122 @@ export default function ClubProfileScreen() {
   const [whatToExpect, setWhatToExpect] = useState("");
   const [achievements, setAchievements] = useState("");
 
+  const loadClub = useCallback(async () => {
+    if (!normalizedClubId) return;
+
+    setIsLoadingClub(true);
+
+    const { data: sectionData, error: sectionError } = await supabase
+      .from("club_sections")
+      .select("*")
+      .eq("club_id", normalizedClubId)
+      .order("order_index");
+
+    let clubData: ClubRowPartial | null = null;
+    let clubError: { code?: string; message: string } | null = null;
+
+    for (const columns of CLUB_SELECT_TRIES) {
+      const response = await supabase
+        .from("clubs")
+        .select(columns)
+        .eq("id", normalizedClubId)
+        .maybeSingle();
+
+      clubData = (response.data as ClubRowPartial) ?? null;
+      clubError = response.error;
+
+      if (!clubError || clubError.code !== "42703") break;
+    }
+
+    if (clubError) {
+      Alert.alert("Error", clubError.message);
+      setIsLoadingClub(false);
+      return;
+    }
+
+    if (sectionError) {
+      Alert.alert("Error", sectionError.message);
+      setIsLoadingClub(false);
+      return;
+    }
+
+    const { data: clubFileRows } = await supabase
+      .from("club_files")
+      .select("id, club_id, bucket, path, file_type, title, created_at")
+      .eq("club_id", normalizedClubId)
+      .order("created_at", { ascending: false });
+
+    const matchedLogoFile = ((clubFileRows as ClubFileRow[] | null) ?? []).find(
+      (file) => file.file_type === CLUB_LOGO_FILE_TYPE || file.title === CLUB_LOGO_TITLE
+    );
+
+    const derivedLogoUrl = matchedLogoFile
+      ? supabase.storage
+          .from(matchedLogoFile.bucket)
+          .getPublicUrl(matchedLogoFile.path).data.publicUrl
+      : "";
+
+    setClubName(clubData?.name ?? "");
+    setClubLogoUrl(clubData?.logo_url ?? derivedLogoUrl);
+    setExistingLogoFile(matchedLogoFile ?? null);
+
+    setAbout(sectionData?.find((s) => s.title === "About Us")?.content ?? "");
+    setWhatToExpect(
+      sectionData?.find((s) => s.title === "What to Expect")?.content ?? ""
+    );
+    setAchievements(
+      sectionData?.find((s) => s.title === "Achievements")?.content ?? ""
+    );
+
+    setIsLoadingClub(false);
+  }, [normalizedClubId]);
+
+  useEffect(() => {
+    loadClub();
+  }, [loadClub]);
+
   useEffect(() => {
     if (!normalizedClubId) return;
 
-    const loadClub = async () => {
-      setIsLoadingClub(true);
+    const channel = supabase
+      .channel(`club-profile-${normalizedClubId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "clubs", filter: `id=eq.${normalizedClubId}` },
+        () => {
+          loadClub();
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "club_sections",
+          filter: `club_id=eq.${normalizedClubId}`,
+        },
+        () => {
+          loadClub();
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "club_files",
+          filter: `club_id=eq.${normalizedClubId}`,
+        },
+        () => {
+          loadClub();
+        }
+      )
+      .subscribe();
 
-      const { data: sectionData, error: sectionError } = await supabase
-        .from("club_sections")
-        .select("*")
-        .eq("club_id", normalizedClubId)
-        .order("order_index");
-
-      let clubData: ClubRowPartial | null = null;
-      let clubError: { code?: string; message: string } | null = null;
-
-      for (const columns of CLUB_SELECT_TRIES) {
-        const response = await supabase
-          .from("clubs")
-          .select(columns)
-          .eq("id", normalizedClubId)
-          .maybeSingle();
-
-        clubData = (response.data as ClubRowPartial) ?? null;
-        clubError = response.error;
-
-        if (!clubError || clubError.code !== "42703") break;
-      }
-
-      if (clubError) {
-        Alert.alert("Error", clubError.message);
-        setIsLoadingClub(false);
-        return;
-      }
-
-      if (sectionError) {
-        Alert.alert("Error", sectionError.message);
-        setIsLoadingClub(false);
-        return;
-      }
-
-      const { data: clubFileRows } = await supabase
-        .from("club_files")
-        .select("id, club_id, bucket, path, file_type, title, created_at")
-        .eq("club_id", normalizedClubId)
-        .order("created_at", { ascending: false });
-
-      const matchedLogoFile = ((clubFileRows as ClubFileRow[] | null) ?? []).find(
-        (file) => file.file_type === CLUB_LOGO_FILE_TYPE || file.title === CLUB_LOGO_TITLE
-      );
-
-      const derivedLogoUrl = matchedLogoFile
-        ? supabase.storage
-            .from(matchedLogoFile.bucket)
-            .getPublicUrl(matchedLogoFile.path).data.publicUrl
-        : "";
-
-      setClubName(clubData?.name ?? "");
-      setClubLogoUrl(clubData?.logo_url ?? derivedLogoUrl);
-      setExistingLogoFile(matchedLogoFile ?? null);
-
-      setAbout(sectionData?.find((s) => s.title === "About Us")?.content ?? "");
-      setWhatToExpect(
-        sectionData?.find((s) => s.title === "What to Expect")?.content ?? ""
-      );
-      setAchievements(
-        sectionData?.find((s) => s.title === "Achievements")?.content ?? ""
-      );
-
-      setIsLoadingClub(false);
+    return () => {
+      supabase.removeChannel(channel);
     };
-
-    loadClub();
-  }, [normalizedClubId]);
+  }, [loadClub, normalizedClubId]);
 
   useEffect(() => {
     if (!user || !normalizedClubId) {
@@ -368,7 +411,7 @@ export default function ClubProfileScreen() {
 
       // ✅ IMPORTANT: your club_files policy uses uploader_id = auth.uid()
       // so write uploader_id, not uploaded_by
-      const { data: insertedLogoFile } = await supabase
+      const { data: insertedLogoFile, error: logoFileInsertError } = await supabase
         .from("club_files")
         .insert({
           club_id: normalizedClubId,
@@ -381,37 +424,63 @@ export default function ClubProfileScreen() {
         .select("id, club_id, bucket, path, file_type, title, created_at")
         .maybeSingle();
 
-      setExistingLogoFile((insertedLogoFile as ClubFileRow | null) ?? null);
-    }
-
-    const { error: sectionError } = await supabase.from("club_sections").upsert(
-      [
-        { club_id: normalizedClubId, title: "About Us", content: about, order_index: 1 },
-        { club_id: normalizedClubId, title: "What to Expect", content: whatToExpect, order_index: 2 },
-        { club_id: normalizedClubId, title: "Achievements", content: achievements, order_index: 3 },
-      ],
-      { onConflict: "club_id,title" }
-    );
-
-    if (sectionError) {
-      if (sectionError.code === "42501") {
-        Alert.alert(
-          "Saved with limitation",
-          "Club details were saved, but section content could not be updated with your current permissions."
-        );
-        cancelEdit();
+      if (logoFileInsertError) {
+        Alert.alert("Error", logoFileInsertError.message);
         return;
       }
 
-      Alert.alert("Error", sectionError.message);
-      return;
+      setExistingLogoFile((insertedLogoFile as ClubFileRow | null) ?? null);
+    }
+
+    const sectionPayloads = [
+      { club_id: normalizedClubId, title: "About Us", content: about, order_index: 1 },
+      { club_id: normalizedClubId, title: "What to Expect", content: whatToExpect, order_index: 2 },
+      { club_id: normalizedClubId, title: "Achievements", content: achievements, order_index: 3 },
+    ] as const;
+
+    for (const section of sectionPayloads) {
+      const { data: existingSection, error: sectionLookupError } = await supabase
+        .from("club_sections")
+        .select("id")
+        .eq("club_id", normalizedClubId)
+        .eq("title", section.title)
+        .maybeSingle();
+
+      if (sectionLookupError) {
+        Alert.alert("Error", sectionLookupError.message);
+        return;
+      }
+
+      if (existingSection?.id) {
+        const { error: sectionUpdateError } = await supabase
+          .from("club_sections")
+          .update({ content: section.content, order_index: section.order_index })
+          .eq("id", existingSection.id);
+
+        if (sectionUpdateError) {
+          Alert.alert("Error", sectionUpdateError.message);
+          return;
+        }
+
+        continue;
+      }
+
+      const { error: sectionInsertError } = await supabase
+        .from("club_sections")
+        .insert(section);
+
+      if (sectionInsertError) {
+        Alert.alert("Error", sectionInsertError.message);
+        return;
+      }
     }
 
     setClubLogoUrl(nextLogoUrl || "");
     setPendingLogoAsset(null);
     setRemoveLogoOnSave(false);
-    Alert.alert("Success", "Club details saved.");
+    Alert.alert("Success", "Club updated successfully!");
     cancelEdit();
+    loadClub();
   };
 
   return (
