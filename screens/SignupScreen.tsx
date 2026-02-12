@@ -131,7 +131,7 @@ export default function SignupScreen() {
     setLoading(false);
 
     router.push({
-      pathname: "/verify-otp",
+      pathname: "/verify-otp" as never,
       params: {
         email: normalizedEmail,
         name: name.trim(),
