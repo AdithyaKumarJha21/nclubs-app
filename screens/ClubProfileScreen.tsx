@@ -16,7 +16,9 @@ import { supabase } from "../services/supabase";
 import { useTheme } from "../theme/ThemeContext";
 
 const CLUB_SELECT_TRIES = ["name, logo_url", "name"] as const;
-const CLUB_LOGO_BUCKET = "club-logos";
+const CLUB_LOGO_BUCKET_CANDIDATES = ["club-logos", "club_logos"] as const;
+const CLUB_LOGO_FILE_TYPE = "logo";
+const CLUB_LOGO_TITLE = "Club Logo";
 const MAX_LOGO_FILE_SIZE_BYTES = 2 * 1024 * 1024;
 const ALLOWED_LOGO_MIME_TYPES = new Set(["image/jpeg", "image/png"]);
 const ALLOWED_LOGO_EXTENSIONS = new Set(["jpg", "jpeg", "png"]);
@@ -24,6 +26,23 @@ const ALLOWED_LOGO_EXTENSIONS = new Set(["jpg", "jpeg", "png"]);
 type ClubRowPartial = {
   name?: string | null;
   logo_url?: string | null;
+};
+
+type ClubFileRow = {
+  id: string;
+  club_id: string;
+  bucket: string;
+  path: string;
+  file_type?: string | null;
+  title?: string | null;
+  created_at?: string | null;
+};
+
+const isBucketNotFoundError = (error: { message?: string; statusCode?: string | number } | null) => {
+  if (!error) return false;
+
+  const normalizedMessage = error.message?.toLowerCase() ?? "";
+  return normalizedMessage.includes("bucket not found") || error.statusCode === 404 || error.statusCode === "404";
 };
 
 export default function ClubProfileScreen() {
@@ -44,6 +63,7 @@ export default function ClubProfileScreen() {
   const [pendingLogoAsset, setPendingLogoAsset] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
   const [removeLogoOnSave, setRemoveLogoOnSave] = useState(false);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [existingLogoFile, setExistingLogoFile] = useState<ClubFileRow | null>(null);
 
   const [about, setAbout] = useState("");
   const [whatToExpect, setWhatToExpect] = useState("");
@@ -85,8 +105,23 @@ export default function ClubProfileScreen() {
         return;
       }
 
+      const { data: clubFileRows } = await supabase
+        .from("club_files")
+        .select("id, club_id, bucket, path, file_type, title, created_at")
+        .eq("club_id", normalizedClubId)
+        .order("created_at", { ascending: false });
+
+      const matchedLogoFile = ((clubFileRows as ClubFileRow[] | null) ?? []).find(
+        (file) => file.file_type === CLUB_LOGO_FILE_TYPE || file.title === CLUB_LOGO_TITLE
+      );
+
+      const derivedLogoUrl = matchedLogoFile
+        ? supabase.storage.from(matchedLogoFile.bucket).getPublicUrl(matchedLogoFile.path).data.publicUrl
+        : "";
+
       setClubName(clubData?.name ?? "");
-      setClubLogoUrl(clubData?.logo_url ?? "");
+      setClubLogoUrl(clubData?.logo_url ?? derivedLogoUrl);
+      setExistingLogoFile(matchedLogoFile ?? null);
 
       setAbout(sectionData?.find((s) => s.title === "About Us")?.content ?? "");
       setWhatToExpect(sectionData?.find((s) => s.title === "What to Expect")?.content ?? "");
@@ -164,7 +199,7 @@ export default function ClubProfileScreen() {
 
   const uploadPendingLogoIfAny = async () => {
     if (!pendingLogoAsset || !normalizedClubId) {
-      return removeLogoOnSave ? "" : clubLogoUrl;
+      return null;
     }
 
     setIsUploadingLogo(true);
@@ -177,21 +212,36 @@ export default function ClubProfileScreen() {
       const fileResponse = await fetch(pendingLogoAsset.uri);
       const fileBuffer = await fileResponse.arrayBuffer();
 
-      const { error: uploadError } = await supabase.storage.from(CLUB_LOGO_BUCKET).upload(filePath, fileBuffer, {
-        upsert: true,
-        contentType: pendingLogoAsset.mimeType ?? "image/jpeg",
-      });
+      const bucketCandidates = [...new Set([existingLogoFile?.bucket, ...CLUB_LOGO_BUCKET_CANDIDATES].filter(Boolean))];
+      let lastUploadError: { message?: string; statusCode?: string | number } | null = null;
 
-      if (uploadError) {
-        Alert.alert("Logo upload failed", uploadError.message);
-        return null;
+      for (const bucketName of bucketCandidates) {
+        const { error: uploadError } = await supabase.storage.from(bucketName).upload(filePath, fileBuffer, {
+          upsert: true,
+          contentType: pendingLogoAsset.mimeType ?? "image/jpeg",
+        });
+
+        if (!uploadError) {
+          const { data: publicData } = supabase.storage.from(bucketName).getPublicUrl(filePath);
+          return {
+            bucket: bucketName,
+            path: filePath,
+            publicUrl: publicData.publicUrl,
+          };
+        }
+
+        lastUploadError = uploadError;
+
+        if (!isBucketNotFoundError(uploadError)) {
+          break;
+        }
       }
 
-      const { data: publicData } = supabase.storage.from(CLUB_LOGO_BUCKET).getPublicUrl(filePath);
-      return publicData.publicUrl;
+      Alert.alert("Logo upload failed", lastUploadError?.message ?? "Unable to upload logo.");
+      return undefined;
     } catch (error) {
       Alert.alert("Logo upload failed", error instanceof Error ? error.message : "Unexpected upload error.");
-      return null;
+      return undefined;
     } finally {
       setIsUploadingLogo(false);
     }
@@ -203,12 +253,12 @@ export default function ClubProfileScreen() {
       return;
     }
 
-    const uploadedLogoUrl = await uploadPendingLogoIfAny();
-    if (uploadedLogoUrl === null) {
+    const uploadedLogo = pendingLogoAsset ? await uploadPendingLogoIfAny() : null;
+    if (pendingLogoAsset && !uploadedLogo) {
       return;
     }
 
-    const nextLogoUrl = removeLogoOnSave ? "" : uploadedLogoUrl;
+    const nextLogoUrl = removeLogoOnSave ? "" : uploadedLogo?.publicUrl ?? clubLogoUrl;
 
     const updatePayloadTries = [
       {
@@ -238,6 +288,32 @@ export default function ClubProfileScreen() {
         Alert.alert("Error", clubError.message);
       }
       return;
+    }
+
+    if (removeLogoOnSave && existingLogoFile) {
+      await supabase.from("club_files").delete().eq("id", existingLogoFile.id);
+      setExistingLogoFile(null);
+    }
+
+    if (uploadedLogo) {
+      if (existingLogoFile) {
+        await supabase.from("club_files").delete().eq("id", existingLogoFile.id);
+      }
+
+      const { data: insertedLogoFile } = await supabase
+        .from("club_files")
+        .insert({
+          club_id: normalizedClubId,
+          uploaded_by: user?.id ?? null,
+          bucket: uploadedLogo.bucket,
+          path: uploadedLogo.path,
+          file_type: CLUB_LOGO_FILE_TYPE,
+          title: CLUB_LOGO_TITLE,
+        })
+        .select("id, club_id, bucket, path, file_type, title, created_at")
+        .maybeSingle();
+
+      setExistingLogoFile((insertedLogoFile as ClubFileRow | null) ?? null);
     }
 
     const { error: sectionError } = await supabase.from("club_sections").upsert(
