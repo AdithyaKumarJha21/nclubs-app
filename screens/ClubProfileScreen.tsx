@@ -23,15 +23,12 @@ import { supabase } from "../services/supabase";
 import { useTheme } from "../theme/ThemeContext";
 
 const CLUB_SELECT_TRIES = [
-  "name, description, logo_url",
-  "name, description",
   "name, logo_url",
   "name",
 ] as const;
 
 type ClubRowPartial = {
   name?: string | null;
-  description?: string | null;
   logo_url?: string | null;
 };
 
@@ -56,7 +53,6 @@ export default function ClubProfileScreen() {
   const [isLoadingClub, setIsLoadingClub] = useState(true);
 
   const [clubName, setClubName] = useState("");
-  const [clubDescription, setClubDescription] = useState("");
   const [clubLogoUrl, setClubLogoUrl] = useState("");
 
   const [about, setAbout] = useState("");
@@ -109,7 +105,6 @@ export default function ClubProfileScreen() {
       }
 
       setClubName(clubData?.name ?? "");
-      setClubDescription(clubData?.description ?? "");
       setClubLogoUrl(clubData?.logo_url ?? "");
 
       setAbout(sectionData?.find((s) => s.title === "About Us")?.content ?? "");
@@ -159,15 +154,6 @@ export default function ClubProfileScreen() {
 
     // Try progressively smaller updates to support schemas missing logo_url
     const updatePayloadTries = [
-      {
-        name: clubName,
-        description: clubDescription,
-        logo_url: clubLogoUrl || null,
-      },
-      {
-        name: clubName,
-        description: clubDescription,
-      },
       {
         name: clubName,
         logo_url: clubLogoUrl || null,
@@ -269,21 +255,6 @@ export default function ClubProfileScreen() {
           {clubName}
         </Text>
       )}
-
-      <Text style={[styles.fieldLabel, { color: theme.text }]}>Description</Text>
-      <TextInput
-        style={[
-          styles.input,
-          styles.multiInput,
-          { color: theme.text, borderColor: "#9ca3af" },
-        ]}
-        value={clubDescription}
-        editable={isEditing && isManager}
-        onChangeText={setClubDescription}
-        multiline
-        placeholder="Club description"
-        placeholderTextColor="#6b7280"
-      />
 
       {!isStudent && (
         <>
@@ -391,10 +362,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     marginBottom: 16,
   },
-  multiInput: {
-    minHeight: 90,
-    textAlignVertical: "top",
-  },
   logoPreviewWrap: {
     marginTop: -6,
     marginBottom: 18,
@@ -412,4 +379,3 @@ const styles = StyleSheet.create({
   section: { marginBottom: 24 },
   sectionTitle: { fontSize: 20, fontWeight: "600", marginBottom: 8 },
 });
-
