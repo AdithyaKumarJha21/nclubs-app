@@ -12,6 +12,7 @@ type Club = {
   id: string;
   name: string;
   logo_url: string | null;
+  description: string | null;
 };
 
 export default function ClubsScreen() {
@@ -31,7 +32,7 @@ export default function ClubsScreen() {
 
       const { data, error } = await supabase
         .from("clubs")
-        .select("id, name, logo_url")
+        .select("id, name, logo_url, description")
         .order("name");
 
       if (!isActive) return;
@@ -61,7 +62,12 @@ export default function ClubsScreen() {
     if (!normalizedQuery) return clubs;
 
     return clubs.filter((club) => {
-      return club.name.toLowerCase().includes(normalizedQuery);
+      const nameMatch = club.name.toLowerCase().includes(normalizedQuery);
+      const descriptionMatch = club.description
+        ? club.description.toLowerCase().includes(normalizedQuery)
+        : false;
+
+      return nameMatch || descriptionMatch;
     });
   }, [clubs, normalizedQuery]);
 
