@@ -22,6 +22,8 @@ import { canManageClub } from "../services/permissions";
 import { supabase } from "../services/supabase";
 import { useTheme } from "../theme/ThemeContext";
 
+const CLUB_COLUMN_OPTIONS = ["name, description, logo_url", "name, description", "name, logo_url", "name"] as const;
+
 export default function ClubProfileScreen() {
   const { theme } = useTheme();
   const { user, loading } = useAuth();
@@ -57,18 +59,29 @@ export default function ClubProfileScreen() {
     if (!normalizedClubId) return;
 
     const loadClub = async () => {
-      const [{ data: clubData, error: clubError }, { data: sectionData, error: sectionError }] = await Promise.all([
-        supabase
+      const { data: sectionData, error: sectionError } = await supabase
+        .from("club_sections")
+        .select("*")
+        .eq("club_id", normalizedClubId)
+        .order("order_index");
+
+      let clubData: { name?: string | null; description?: string | null; logo_url?: string | null } | null = null;
+      let clubError: { code?: string; message: string } | null = null;
+
+      for (const columns of CLUB_COLUMN_OPTIONS) {
+        const response = await supabase
           .from("clubs")
-          .select("name, description, logo_url")
+          .select(columns)
           .eq("id", normalizedClubId)
-          .maybeSingle(),
-        supabase
-          .from("club_sections")
-          .select("*")
-          .eq("club_id", normalizedClubId)
-          .order("order_index"),
-      ]);
+          .maybeSingle();
+
+        clubData = response.data;
+        clubError = response.error;
+
+        if (!clubError || clubError.code !== "42703") {
+          break;
+        }
+      }
 
       if (clubError) {
         Alert.alert("Error", clubError.message);
@@ -127,14 +140,39 @@ export default function ClubProfileScreen() {
       return;
     }
 
-    const { error: clubError } = await supabase
-      .from("clubs")
-      .update({
+    const updatePayloads = [
+      {
         name: clubName,
         description: clubDescription,
         logo_url: clubLogoUrl || null,
-      })
-      .eq("id", normalizedClubId);
+      },
+      {
+        name: clubName,
+        description: clubDescription,
+      },
+      {
+        name: clubName,
+        logo_url: clubLogoUrl || null,
+      },
+      {
+        name: clubName,
+      },
+    ] as const;
+
+    let clubError: { code?: string; message: string } | null = null;
+
+    for (const payload of updatePayloads) {
+      const response = await supabase
+        .from("clubs")
+        .update(payload)
+        .eq("id", normalizedClubId);
+
+      clubError = response.error;
+
+      if (!clubError || clubError.code !== "42703") {
+        break;
+      }
+    }
 
     if (clubError) {
       if (clubError.code === "42501") {

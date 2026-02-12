@@ -15,6 +15,13 @@ type Club = {
   description: string | null;
 };
 
+const CLUB_COLUMN_OPTIONS = [
+  "id, name, logo_url, description",
+  "id, name, description",
+  "id, name, logo_url",
+  "id, name",
+] as const;
+
 export default function ClubsScreen() {
   const router = useRouter();
   const { theme } = useTheme();
@@ -30,10 +37,19 @@ export default function ClubsScreen() {
     const loadClubs = async () => {
       setLoading(true);
 
-      const { data, error } = await supabase
-        .from("clubs")
-        .select("id, name, logo_url, description")
-        .order("name");
+      let data: { id: string; name: string; description?: string | null; logo_url?: string | null }[] | null = null;
+      let error: { code?: string } | null = null;
+
+      for (const columns of CLUB_COLUMN_OPTIONS) {
+        const response = await supabase.from("clubs").select(columns).order("name");
+
+        data = response.data;
+        error = response.error;
+
+        if (!error || error.code !== "42703") {
+          break;
+        }
+      }
 
       if (!isActive) return;
 
@@ -44,7 +60,14 @@ export default function ClubsScreen() {
         return;
       }
 
-      setClubs((data ?? []) as Club[]);
+      const normalizedClubs: Club[] = (data ?? []).map((club) => ({
+        id: club.id,
+        name: club.name,
+        description: club.description ?? null,
+        logo_url: club.logo_url ?? null,
+      }));
+
+      setClubs(normalizedClubs);
       setLoading(false);
     };
 
