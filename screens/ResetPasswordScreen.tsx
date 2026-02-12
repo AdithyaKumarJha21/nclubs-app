@@ -102,14 +102,22 @@ export default function ResetPasswordScreen() {
         <Text style={styles.title}>Reset Password</Text>
         <Text style={styles.subtitle}>Enter the OTP from your email.</Text>
 
-        <Text style={styles.label}>Email</Text>
         <TextInput
           style={styles.input}
-          placeholder="Enter your email"
+          placeholder="Email"
           value={email}
           onChangeText={setEmail}
           autoCapitalize="none"
           keyboardType="email-address"
+          autoCorrect={false}
+        />
+
+        <TextInput
+          style={styles.input}
+          placeholder="OTP code"
+          value={otp}
+          onChangeText={setOtp}
+          autoCapitalize="none"
           autoCorrect={false}
         />
 
@@ -135,7 +143,7 @@ export default function ResetPasswordScreen() {
         <Text style={styles.label}>Confirm Password</Text>
         <TextInput
           style={styles.input}
-          placeholder="Confirm new password"
+          placeholder="Confirm password"
           secureTextEntry
           value={confirmPassword}
           onChangeText={setConfirmPassword}
@@ -179,12 +187,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#475569",
     marginBottom: 16,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#334155",
-    marginBottom: 6,
   },
   input: {
     borderWidth: 1,

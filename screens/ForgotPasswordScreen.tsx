@@ -34,17 +34,20 @@ export default function ForgotPasswordScreen() {
 
     setLoading(true);
 
-    const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail);
+    const { error } = await supabase.auth.signInWithOtp({
+      email: trimmedEmail,
+      options: { shouldCreateUser: false },
+    });
 
     setLoading(false);
 
     if (error) {
-      console.error("FORGOT_PASSWORD_SEND_ERROR", error);
+      console.error("FORGOT_PASSWORD_OTP_ERROR", error);
       Alert.alert("Unable to send OTP", error.message || "Please try again.");
       return;
     }
 
-    Alert.alert("Success", "OTP sent to your email. Please check spam if you do not see it.");
+    Alert.alert("Success", "OTP sent to your email");
     router.push({ pathname: "/reset-password", params: { email: trimmedEmail } });
   };
 
