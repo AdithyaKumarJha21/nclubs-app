@@ -15,6 +15,9 @@ type Club = {
   description: string | null;
 };
 
+const CLUB_COLUMNS_WITH_LOGO = "id, name, logo_url, description";
+const CLUB_COLUMNS_WITHOUT_LOGO = "id, name, description";
+
 export default function ClubsScreen() {
   const router = useRouter();
   const { theme } = useTheme();
@@ -30,10 +33,23 @@ export default function ClubsScreen() {
     const loadClubs = async () => {
       setLoading(true);
 
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from("clubs")
-        .select("id, name, logo_url, description")
+        .select(CLUB_COLUMNS_WITH_LOGO)
         .order("name");
+
+      if (error?.code === "42703") {
+        const fallbackResponse = await supabase
+          .from("clubs")
+          .select(CLUB_COLUMNS_WITHOUT_LOGO)
+          .order("name");
+
+        data = fallbackResponse.data?.map((club) => ({
+          ...club,
+          logo_url: null,
+        }));
+        error = fallbackResponse.error;
+      }
 
       if (!isActive) return;
 
