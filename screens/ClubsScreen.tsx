@@ -15,8 +15,19 @@ type Club = {
   description: string | null;
 };
 
-const CLUB_COLUMNS_WITH_LOGO = "id, name, logo_url, description";
-const CLUB_COLUMNS_WITHOUT_LOGO = "id, name, description";
+const CLUB_SELECT_TRIES = [
+  "id, name, logo_url, description",
+  "id, name, description",
+  "id, name, logo_url",
+  "id, name",
+] as const;
+
+type ClubRowPartial = {
+  id: string;
+  name: string;
+  description?: string | null;
+  logo_url?: string | null;
+};
 
 export default function ClubsScreen() {
   const router = useRouter();
@@ -33,22 +44,18 @@ export default function ClubsScreen() {
     const loadClubs = async () => {
       setLoading(true);
 
-      let { data, error } = await supabase
-        .from("clubs")
-        .select(CLUB_COLUMNS_WITH_LOGO)
-        .order("name");
+      let data: ClubRowPartial[] | null = null;
+      let error: { code?: string; message?: string } | null = null;
 
-      if (error?.code === "42703") {
-        const fallbackResponse = await supabase
-          .from("clubs")
-          .select(CLUB_COLUMNS_WITHOUT_LOGO)
-          .order("name");
+      // ✅ Try progressively smaller selects to support schemas missing logo_url/description
+      for (const columns of CLUB_SELECT_TRIES) {
+        const response = await supabase.from("clubs").select(columns).order("name");
 
-        data = fallbackResponse.data?.map((club) => ({
-          ...club,
-          logo_url: null,
-        }));
-        error = fallbackResponse.error;
+        data = (response.data as ClubRowPartial[]) ?? null;
+        error = response.error;
+
+        // If error is NOT "column does not exist", stop trying
+        if (!error || error.code !== "42703") break;
       }
 
       if (!isActive) return;
@@ -60,7 +67,14 @@ export default function ClubsScreen() {
         return;
       }
 
-      setClubs((data ?? []) as Club[]);
+      const normalizedClubs: Club[] = (data ?? []).map((club) => ({
+        id: club.id,
+        name: club.name,
+        description: club.description ?? null,
+        logo_url: club.logo_url ?? null,
+      }));
+
+      setClubs(normalizedClubs);
       setLoading(false);
     };
 

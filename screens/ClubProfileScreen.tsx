@@ -22,15 +22,25 @@ import { canManageClub } from "../services/permissions";
 import { supabase } from "../services/supabase";
 import { useTheme } from "../theme/ThemeContext";
 
-const CLUB_COLUMNS_WITH_LOGO = "name, description, logo_url";
-const CLUB_COLUMNS_WITHOUT_LOGO = "name, description";
+const CLUB_SELECT_TRIES = [
+  "name, description, logo_url",
+  "name, description",
+  "name, logo_url",
+  "name",
+] as const;
+
+type ClubRowPartial = {
+  name?: string | null;
+  description?: string | null;
+  logo_url?: string | null;
+};
 
 export default function ClubProfileScreen() {
   const { theme } = useTheme();
   const { user, loading } = useAuth();
   const { clubId } = useLocalSearchParams<{ clubId?: string | string[] }>();
 
-  // ✅ CRITICAL FIX — normalize route param
+  // ✅ normalize route param
   const normalizedClubId =
     typeof clubId === "string"
       ? clubId
@@ -60,36 +70,30 @@ export default function ClubProfileScreen() {
     if (!normalizedClubId) return;
 
     const loadClub = async () => {
-      const [{ data: clubDataWithLogo, error: clubErrorWithLogo }, { data: sectionData, error: sectionError }] = await Promise.all([
-        supabase
-          .from("clubs")
-          .select(CLUB_COLUMNS_WITH_LOGO)
-          .eq("id", normalizedClubId)
-          .maybeSingle(),
-        supabase
-          .from("club_sections")
-          .select("*")
-          .eq("club_id", normalizedClubId)
-          .order("order_index"),
-      ]);
+      setIsLoadingClub(true);
 
-      let clubData = clubDataWithLogo;
-      let clubError = clubErrorWithLogo;
+      const { data: sectionData, error: sectionError } = await supabase
+        .from("club_sections")
+        .select("*")
+        .eq("club_id", normalizedClubId)
+        .order("order_index");
 
-      if (clubErrorWithLogo?.code === "42703") {
-        const fallbackClubResponse = await supabase
+      let clubData: ClubRowPartial | null = null;
+      let clubError: { code?: string; message: string } | null = null;
+
+      // Try progressively smaller selects to support schemas missing logo_url
+      for (const columns of CLUB_SELECT_TRIES) {
+        const response = await supabase
           .from("clubs")
-          .select(CLUB_COLUMNS_WITHOUT_LOGO)
+          .select(columns)
           .eq("id", normalizedClubId)
           .maybeSingle();
 
-        clubData = fallbackClubResponse.data
-          ? {
-              ...fallbackClubResponse.data,
-              logo_url: null,
-            }
-          : null;
-        clubError = fallbackClubResponse.error;
+        clubData = (response.data as ClubRowPartial) ?? null;
+        clubError = response.error;
+
+        // If not "column does not exist" -> stop trying
+        if (!clubError || clubError.code !== "42703") break;
       }
 
       if (clubError) {
@@ -108,9 +112,7 @@ export default function ClubProfileScreen() {
       setClubDescription(clubData?.description ?? "");
       setClubLogoUrl(clubData?.logo_url ?? "");
 
-      setAbout(
-        sectionData?.find((s) => s.title === "About Us")?.content ?? ""
-      );
+      setAbout(sectionData?.find((s) => s.title === "About Us")?.content ?? "");
       setWhatToExpect(
         sectionData?.find((s) => s.title === "What to Expect")?.content ?? ""
       );
@@ -124,6 +126,9 @@ export default function ClubProfileScreen() {
     loadClub();
   }, [normalizedClubId]);
 
+  /* ===============================
+     2️⃣ PERMISSIONS
+     =============================== */
   useEffect(() => {
     if (!user || !normalizedClubId) {
       setIsCheckingPermission(false);
@@ -143,31 +148,50 @@ export default function ClubProfileScreen() {
 
   if (loading || isLoadingClub || isCheckingPermission) return null;
 
+  /* ===============================
+     3️⃣ SAVE EDIT
+     =============================== */
   const handleSaveEdit = async () => {
     if (!isManager || !normalizedClubId) {
       Alert.alert("Not authorized", "Not authorized to edit this club.");
       return;
     }
 
-    let { error: clubError } = await supabase
-      .from("clubs")
-      .update({
+    // Try progressively smaller updates to support schemas missing logo_url
+    const updatePayloadTries = [
+      {
         name: clubName,
         description: clubDescription,
         logo_url: clubLogoUrl || null,
-      })
-      .eq("id", normalizedClubId);
+      },
+      {
+        name: clubName,
+        description: clubDescription,
+      },
+      {
+        name: clubName,
+        logo_url: clubLogoUrl || null,
+      },
+      {
+        name: clubName,
+      },
+    ] as const;
 
-    if (clubError?.code === "42703") {
-      const fallbackUpdate = await supabase
+    let clubError: { code?: string; message: string } | null = null;
+
+    for (const payload of updatePayloadTries) {
+      const response = await supabase
         .from("clubs")
-        .update({
-          name: clubName,
-          description: clubDescription,
-        })
+        .update(payload)
         .eq("id", normalizedClubId);
 
-      clubError = fallbackUpdate.error;
+      clubError = response.error;
+
+      // If missing column -> try smaller payload
+      if (clubError?.code === "42703") continue;
+
+      // success or other error -> stop
+      break;
     }
 
     if (clubError) {
@@ -181,9 +205,24 @@ export default function ClubProfileScreen() {
 
     const { error: sectionError } = await supabase.from("club_sections").upsert(
       [
-        { club_id: normalizedClubId, title: "About Us", content: about, order_index: 1 },
-        { club_id: normalizedClubId, title: "What to Expect", content: whatToExpect, order_index: 2 },
-        { club_id: normalizedClubId, title: "Achievements", content: achievements, order_index: 3 },
+        {
+          club_id: normalizedClubId,
+          title: "About Us",
+          content: about,
+          order_index: 1,
+        },
+        {
+          club_id: normalizedClubId,
+          title: "What to Expect",
+          content: whatToExpect,
+          order_index: 2,
+        },
+        {
+          club_id: normalizedClubId,
+          title: "Achievements",
+          content: achievements,
+          order_index: 3,
+        },
       ],
       { onConflict: "club_id,title" }
     );
@@ -206,10 +245,10 @@ export default function ClubProfileScreen() {
   };
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: theme.background }]}>
-      <Text style={[styles.clubName, { color: theme.text }]}> 
-        Club Profile
-      </Text>
+    <ScrollView
+      style={[styles.container, { backgroundColor: theme.background }]}
+    >
+      <Text style={[styles.clubName, { color: theme.text }]}>Club Profile</Text>
 
       <View style={styles.logoDisplayWrap}>
         <ClubLogo logoUrl={clubLogoUrl} clubName={clubName} size={120} />
@@ -226,12 +265,18 @@ export default function ClubProfileScreen() {
           placeholderTextColor="#6b7280"
         />
       ) : (
-        <Text style={[styles.readOnlyValue, { color: theme.text }]}>{clubName}</Text>
+        <Text style={[styles.readOnlyValue, { color: theme.text }]}>
+          {clubName}
+        </Text>
       )}
 
       <Text style={[styles.fieldLabel, { color: theme.text }]}>Description</Text>
       <TextInput
-        style={[styles.input, styles.multiInput, { color: theme.text, borderColor: "#9ca3af" }]}
+        style={[
+          styles.input,
+          styles.multiInput,
+          { color: theme.text, borderColor: "#9ca3af" },
+        ]}
         value={clubDescription}
         editable={isEditing && isManager}
         onChangeText={setClubDescription}
@@ -255,8 +300,15 @@ export default function ClubProfileScreen() {
 
           {isEditing && isManager ? (
             <View style={styles.logoPreviewWrap}>
-              <Text style={[styles.logoPreviewLabel, { color: theme.text }]}>Live preview</Text>
-              <ClubLogo logoUrl={clubLogoUrl} clubName={clubName} size={88} showErrorMessage />
+              <Text style={[styles.logoPreviewLabel, { color: theme.text }]}>
+                Live preview
+              </Text>
+              <ClubLogo
+                logoUrl={clubLogoUrl}
+                clubName={clubName}
+                size={88}
+                showErrorMessage
+              />
             </View>
           ) : null}
         </>
@@ -279,12 +331,29 @@ export default function ClubProfileScreen() {
         ))}
 
       {!isManager && (
-        <Text style={[styles.unauthorizedText, { color: theme.text }]}>Not authorized to edit this club.</Text>
+        <Text style={[styles.unauthorizedText, { color: theme.text }]}>
+          Not authorized to edit this club.
+        </Text>
       )}
 
-      <EditableTextSection title="About Us" value={about} isEditing={isEditing && isManager} onChange={setAbout} />
-      <EditableTextSection title="What to Expect" value={whatToExpect} isEditing={isEditing && isManager} onChange={setWhatToExpect} />
-      <EditableTextSection title="Achievements" value={achievements} isEditing={isEditing && isManager} onChange={setAchievements} />
+      <EditableTextSection
+        title="About Us"
+        value={about}
+        isEditing={isEditing && isManager}
+        onChange={setAbout}
+      />
+      <EditableTextSection
+        title="What to Expect"
+        value={whatToExpect}
+        isEditing={isEditing && isManager}
+        onChange={setWhatToExpect}
+      />
+      <EditableTextSection
+        title="Achievements"
+        value={achievements}
+        isEditing={isEditing && isManager}
+        onChange={setAchievements}
+      />
 
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: theme.text }]}>Gallery</Text>
@@ -343,3 +412,4 @@ const styles = StyleSheet.create({
   section: { marginBottom: 24 },
   sectionTitle: { fontSize: 20, fontWeight: "600", marginBottom: 8 },
 });
+
