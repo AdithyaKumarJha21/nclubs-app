@@ -65,32 +65,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      const { data, error } = await supabase
+      const userId = session.user.id;
+      console.log("AUTH_SESSION", { userId });
+
+      const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("roles(name)")
-        .eq("id", session.user.id)
-        .single<ProfileRow>();
+        .eq("id", userId)
+        .maybeSingle<ProfileRow>();
 
-      if (error || !data?.roles) {
-        console.error("Role fetch failed:", error);
+      console.log("PROFILE_FETCH", {
+        userId,
+        hasProfile: !!profile,
+        profileError,
+      });
+
+      if (profileError && profileError.code !== "PGRST116") {
+        console.error("Role fetch failed:", profileError);
         setUser(null);
         hasResolvedInitialSession.current = true;
         setLoading(false);
         return;
       }
 
-      // ✅ FULLY TYPE-SAFE ROLE EXTRACTION
-      let roleName: string | undefined;
+      if (!profile) {
+        console.warn("Missing profile, using fallback role.", { userId });
+        setUser({
+          id: userId,
+          role: "student",
+        });
+        hasResolvedInitialSession.current = true;
+        setLoading(false);
+        return;
+      }
 
-      if (Array.isArray(data.roles)) {
-        roleName = data.roles[0]?.name;
-      } else {
-        roleName = data.roles.name;
+      let roleName: string | undefined;
+      const roles = profile.roles;
+
+      if (Array.isArray(roles)) {
+        roleName = roles[0]?.name;
+      } else if (roles) {
+        roleName = roles.name;
       }
 
       if (!roleName) {
-        console.error("Invalid role data:", data.roles);
-        setUser(null);
+        console.error("Invalid role data:", profile.roles);
+        setUser({
+          id: userId,
+          role: "student",
+        });
         hasResolvedInitialSession.current = true;
         setLoading(false);
         return;
@@ -99,12 +122,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const normalizedRole = roleName.toLowerCase() as Role;
 
       console.log("✅ AUTH RESOLVED", {
-        userId: session.user.id,
+        userId,
         role: normalizedRole,
       });
 
       setUser({
-        id: session.user.id,
+        id: userId,
         role: normalizedRole,
       });
 
