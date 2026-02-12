@@ -1,5 +1,4 @@
 import { Ionicons } from "@expo/vector-icons";
-import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
@@ -92,7 +91,6 @@ export default function SignupScreen() {
 
     setLoading(true);
 
-    // ✅ CHECK USN UNIQUENESS
     const { data: existingProfile, error: usnCheckError } = await supabase
       .from("profiles")
       .select("id")
@@ -113,21 +111,9 @@ export default function SignupScreen() {
 
     const normalizedEmail = email.trim().toLowerCase();
 
-    // 1) CREATE AUTH USER
-    const emailRedirectTo = Linking.createURL("/auth-callback");
-    console.log("[auth] signUp emailRedirectTo", emailRedirectTo);
-
     const { data, error } = await supabase.auth.signUp({
       email: normalizedEmail,
       password,
-      options: {
-        emailRedirectTo,
-      },
-    });
-
-    console.log("[auth] signUp session returned", {
-      hasSession: Boolean(data?.session),
-      userId: data?.user?.id,
     });
 
     if (error) {
@@ -142,63 +128,16 @@ export default function SignupScreen() {
       return;
     }
 
-    if (!data.session) {
-      const { error: resendError } = await supabase.auth.resend({
-        type: "signup",
-        email: normalizedEmail,
-        options: {
-          emailRedirectTo,
-        },
-      });
-
-      if (resendError) {
-        console.warn("[auth] resend signup email failed", resendError.message);
-      } else {
-        console.log("[auth] resend signup email triggered", normalizedEmail);
-      }
-
-      Alert.alert(
-        "Signup successful 🎉",
-        "Check your email to confirm your account."
-      );
-    } else {
-      // This can happen when email confirmation is disabled in Supabase.
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .update({
-          name,
-          usn,
-          email: normalizedEmail,
-        })
-        .eq("id", data.user.id);
-
-      console.log("Profile update result", {
-        userId: data.user.id,
-        hasError: Boolean(profileError),
-      });
-
-      if (profileError) {
-        Alert.alert(
-          "Signup successful 🎉",
-          "Your account was created. Please log in to complete profile setup."
-        );
-        setLoading(false);
-        return;
-      }
-
-      Alert.alert("Signup successful 🎉", "You can now log in.");
-    }
-
-    if (!data.session) {
-      Alert.alert(
-        "Signup successful 🎉",
-        "Check your email to confirm your account."
-      );
-    } else {
-      Alert.alert("Signup successful 🎉", "You can now log in.");
-    }
-
     setLoading(false);
+
+    router.push({
+      pathname: "/verify-otp",
+      params: {
+        email: normalizedEmail,
+        name: name.trim(),
+        usn: usn.trim(),
+      },
+    });
   };
 
   const handleLoginPress = () => {
@@ -230,7 +169,6 @@ export default function SignupScreen() {
           Use your college details to join clubs and events.
         </Text>
 
-        {/* Name */}
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Full Name</Text>
           <TextInput
@@ -241,7 +179,6 @@ export default function SignupScreen() {
           />
         </View>
 
-        {/* USN */}
         <View style={styles.inputGroup}>
           <Text style={styles.label}>USN</Text>
           <TextInput
@@ -253,7 +190,6 @@ export default function SignupScreen() {
           />
         </View>
 
-        {/* Email */}
         <View style={styles.inputGroup}>
           <Text style={styles.label}>College Email</Text>
           <TextInput
@@ -266,7 +202,6 @@ export default function SignupScreen() {
           />
         </View>
 
-        {/* Password */}
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Password</Text>
           <View style={styles.passwordField}>
@@ -298,12 +233,7 @@ export default function SignupScreen() {
 
           <View style={styles.passwordMeta}>
             <Text style={styles.passwordStrengthLabel}>
-              Strength:{" "}
-              <Text
-                style={[styles.passwordStrengthValue, { color: strengthColor }]}
-              >
-                {strengthLabel}
-              </Text>
+              Strength: <Text style={[styles.passwordStrengthValue, { color: strengthColor }]}>{strengthLabel}</Text>
             </Text>
           </View>
 
@@ -323,7 +253,6 @@ export default function SignupScreen() {
           </View>
         </View>
 
-        {/* Confirm Password */}
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Confirm Password</Text>
           <View style={styles.passwordField}>
@@ -381,9 +310,7 @@ export default function SignupScreen() {
           </Text>
         </TouchableOpacity>
 
-        <Text style={styles.helperText}>
-          Your profile will be securely stored after signup.
-        </Text>
+        <Text style={styles.helperText}>Verify your email with OTP after signup.</Text>
 
         <TouchableOpacity onPress={handleLoginPress}>
           <Text style={styles.loginLink}>Already a user? Log in</Text>
