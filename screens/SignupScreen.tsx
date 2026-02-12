@@ -1,8 +1,7 @@
-import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
-  Alert,
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
@@ -12,6 +11,31 @@ import {
   View,
 } from "react-native";
 import { supabase } from "../services/supabase";
+import { isValidEmail, sanitizeOtp } from "../utils/auth";
+
+type RoleName = "student" | "faculty" | "president" | "admin";
+
+type RoleRow = {
+  name: RoleName;
+};
+
+type ProfileWithRole = {
+  roles: RoleRow | RoleRow[] | null;
+};
+
+const OTP_LENGTH = 6;
+
+const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+const resolveRole = (profile: ProfileWithRole | null): RoleName | null => {
+  const roleValue = profile?.roles;
+
+  if (Array.isArray(roleValue)) {
+    return roleValue[0]?.name ?? null;
+  }
+
+  return roleValue?.name ?? null;
+};
 
 export default function SignupScreen() {
   const router = useRouter();
@@ -19,143 +43,203 @@ export default function SignupScreen() {
   const [name, setName] = useState("");
   const [usn, setUsn] = useState("");
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [otp, setOtp] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [infoMessage, setInfoMessage] = useState<string | null>(null);
 
-  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
-  const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] =
-    useState(false);
+  const getNormalizedEmail = () => email.trim().toLowerCase();
 
-  const passwordChecks = [
-    {
-      key: "length",
-      label: "Password must be at least 8 characters",
-      isMet: password.length >= 8,
-    },
-    {
-      key: "uppercase",
-      label: "Must include at least one uppercase letter",
-      isMet: /[A-Z]/.test(password),
-    },
-    {
-      key: "lowercase",
-      label: "Must include at least one lowercase letter",
-      isMet: /[a-z]/.test(password),
-    },
-    {
-      key: "number",
-      label: "Must include at least one number",
-      isMet: /\d/.test(password),
-    },
-    {
-      key: "special",
-      label: "Must include at least one special character (!@#$%^&* etc.)",
-      isMet: /[!@#$%^&*()_+\-=[\]{}|\\:;"'<>,.?/]/.test(password),
-    },
-  ];
+  const fetchAndRouteByRole = async (userId: string) => {
+    const { data: profile, error } = await supabase
+      .from("profiles")
+      .select("roles(name)")
+      .eq("id", userId)
+      .maybeSingle<ProfileWithRole>();
 
-  const metCount = passwordChecks.filter((check) => check.isMet).length;
-  const isPasswordValid = metCount === passwordChecks.length;
-  const isConfirmValid =
-    confirmPassword.length > 0 && confirmPassword === password;
-  const isFormValid = isPasswordValid && isConfirmValid;
-
-  const strengthLabel =
-    metCount <= 2 ? "Weak" : metCount <= 4 ? "Medium" : "Strong";
-  const strengthColor =
-    metCount <= 2 ? "#dc2626" : metCount <= 4 ? "#f59e0b" : "#16a34a";
-
-  const handleSignupPress = async () => {
-    setPasswordError(null);
-
-    if (!name || !usn || !email || !password || !confirmPassword) {
-      Alert.alert("Missing details", "Please fill all the fields.");
+    if (error) {
+      setErrorMessage(error.message);
       return;
     }
 
-    if (!isPasswordValid) {
-      const missingMessage = passwordChecks
-        .filter((check) => !check.isMet)
-        .map((check) => check.label)
-        .join("\n");
-      setPasswordError(missingMessage);
+    const role = resolveRole(profile);
+
+    if (role === "faculty" || role === "admin") {
+      router.replace("/faculty-home");
       return;
     }
 
-    if (!isConfirmValid) {
-      setPasswordError("Passwords do not match.");
+    if (role === "president") {
+      router.replace("/president-home");
       return;
     }
 
-    setLoading(true);
+    router.replace("/student-home");
+  };
+
+  const sendOtp = async () => {
+    setErrorMessage(null);
+    setInfoMessage(null);
+
+    const normalizedEmail = getNormalizedEmail();
+
+    if (!name.trim() || !usn.trim() || !normalizedEmail) {
+      setErrorMessage("Please enter name, USN, and email.");
+      return;
+    }
+
+    if (!isValidEmail(normalizedEmail)) {
+      setErrorMessage("Please enter a valid email address.");
+      return;
+    }
+
+    setIsSendingOtp(true);
+
+    console.log("OTP_SEND_REQUEST", { email: normalizedEmail });
 
     const { data: existingProfile, error: usnCheckError } = await supabase
       .from("profiles")
       .select("id")
-      .eq("usn", usn)
+      .eq("usn", usn.trim())
       .maybeSingle();
 
     if (existingProfile) {
-      Alert.alert("Signup failed", "This USN is already registered.");
-      setLoading(false);
+      setErrorMessage("This USN is already registered.");
+      setIsSendingOtp(false);
       return;
     }
 
     if (usnCheckError) {
-      Alert.alert("Error", usnCheckError.message);
-      setLoading(false);
+      setErrorMessage(usnCheckError.message);
+      setIsSendingOtp(false);
       return;
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
-
-    const { data, error } = await supabase.auth.signUp({
+    const { error } = await supabase.auth.signInWithOtp({
       email: normalizedEmail,
-      password,
-    });
-
-    if (error) {
-      Alert.alert("Signup failed", error.message);
-      setLoading(false);
-      return;
-    }
-
-    if (!data?.user) {
-      Alert.alert("Error", "User not created.");
-      setLoading(false);
-      return;
-    }
-
-    setLoading(false);
-
-    router.push({
-      pathname: "/verify-otp" as never,
-      params: {
-        email: normalizedEmail,
-        name: name.trim(),
-        usn: usn.trim(),
+      options: {
+        shouldCreateUser: true,
       },
     });
+
+    setIsSendingOtp(false);
+
+    if (error) {
+      setErrorMessage(error.message);
+      return;
+    }
+
+    setOtpSent(true);
+    setInfoMessage("OTP sent. Enter the 6-digit code from your email.");
+  };
+
+  const verifyOtp = async () => {
+    setErrorMessage(null);
+    setInfoMessage(null);
+
+    const normalizedEmail = getNormalizedEmail();
+    const cleanedOtp = sanitizeOtp(otp);
+
+    if (!normalizedEmail) {
+      setErrorMessage("Missing email. Please re-enter your details.");
+      return;
+    }
+
+    if (cleanedOtp.length !== OTP_LENGTH) {
+      setErrorMessage("Please enter a valid 6-digit OTP.");
+      return;
+    }
+
+    setIsVerifyingOtp(true);
+
+    console.log("OTP_VERIFY_REQUEST", {
+      email: normalizedEmail,
+      tokenLen: cleanedOtp.length,
+    });
+
+    const { error: verifyError } = await supabase.auth.verifyOtp({
+      email: normalizedEmail,
+      token: cleanedOtp,
+      type: "email",
+    });
+
+    console.log("OTP_VERIFY_RESULT", {
+      ok: !verifyError,
+      error: verifyError?.message ?? null,
+    });
+
+    if (verifyError) {
+      const normalized = verifyError.message.toLowerCase();
+      if (normalized.includes("expired") || normalized.includes("invalid")) {
+        setErrorMessage("Invalid or expired OTP. Please request a new code.");
+      } else {
+        setErrorMessage(verifyError.message);
+      }
+      setIsVerifyingOtp(false);
+      return;
+    }
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user?.id) {
+      setErrorMessage(userError?.message || "Unable to load signed-in user.");
+      setIsVerifyingOtp(false);
+      return;
+    }
+
+    const profilePayload = {
+      name: name.trim(),
+      usn: usn.trim(),
+      email: normalizedEmail,
+    };
+
+    let { error: updateError } = await supabase
+      .from("profiles")
+      .update(profilePayload)
+      .eq("id", user.id);
+
+    if (updateError) {
+      await delay(350);
+      const retryResult = await supabase
+        .from("profiles")
+        .update(profilePayload)
+        .eq("id", user.id);
+      updateError = retryResult.error;
+
+      if (updateError) {
+        const upsertResult = await supabase.from("profiles").upsert(
+          {
+            id: user.id,
+            ...profilePayload,
+          },
+          { onConflict: "id" }
+        );
+        updateError = upsertResult.error;
+      }
+    }
+
+    console.log("PROFILE_UPDATE_RESULT", {
+      userId: user.id,
+      error: updateError?.message ?? null,
+    });
+
+    if (updateError) {
+      setErrorMessage(updateError.message);
+      setIsVerifyingOtp(false);
+      return;
+    }
+
+    await fetchAndRouteByRole(user.id);
+    setIsVerifyingOtp(false);
   };
 
   const handleLoginPress = () => {
     router.push("/login");
-  };
-
-  const handlePasswordSubmit = () => {
-    if (isFormValid && !loading) {
-      handleSignupPress();
-    } else if (!isPasswordValid) {
-      const missingMessage = passwordChecks
-        .filter((check) => !check.isMet)
-        .map((check) => check.label)
-        .join("\n");
-      setPasswordError(missingMessage);
-    } else if (!isConfirmValid) {
-      setPasswordError("Passwords do not match.");
-    }
   };
 
   return (
@@ -166,7 +250,7 @@ export default function SignupScreen() {
       <View style={styles.card}>
         <Text style={styles.title}>Create your NCLUBS account ✨</Text>
         <Text style={styles.subtitle}>
-          Use your college details to join clubs and events.
+          Sign up with email OTP. No password required.
         </Text>
 
         <View style={styles.inputGroup}>
@@ -176,6 +260,7 @@ export default function SignupScreen() {
             placeholder="Adithya Kumar Jha"
             value={name}
             onChangeText={setName}
+            editable={!otpSent && !isSendingOtp && !isVerifyingOtp}
           />
         </View>
 
@@ -187,6 +272,7 @@ export default function SignupScreen() {
             autoCapitalize="characters"
             value={usn}
             onChangeText={setUsn}
+            editable={!otpSent && !isSendingOtp && !isVerifyingOtp}
           />
         </View>
 
@@ -199,121 +285,56 @@ export default function SignupScreen() {
             autoCapitalize="none"
             value={email}
             onChangeText={setEmail}
+            editable={!otpSent && !isSendingOtp && !isVerifyingOtp}
           />
         </View>
 
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Password</Text>
-          <View style={styles.passwordField}>
+        {otpSent ? (
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>OTP</Text>
             <TextInput
-              style={[styles.input, styles.passwordInput]}
-              placeholder="Create a strong password"
-              secureTextEntry={!isPasswordVisible}
-              value={password}
-              onChangeText={(value) => {
-                setPassword(value);
-                setPasswordError(null);
-              }}
-              onSubmitEditing={handlePasswordSubmit}
+              style={styles.input}
+              placeholder="Enter 6-digit OTP"
+              keyboardType="number-pad"
+              value={otp}
+              onChangeText={(value) => setOtp(sanitizeOtp(value))}
+              maxLength={OTP_LENGTH}
+              editable={!isVerifyingOtp}
             />
-            <TouchableOpacity
-              onPress={() => setIsPasswordVisible((prev) => !prev)}
-              accessibilityLabel={
-                isPasswordVisible ? "Hide password" : "Show password"
-              }
-              style={styles.passwordToggle}
-            >
-              <Ionicons
-                name={isPasswordVisible ? "eye-off" : "eye"}
-                size={20}
-                color="#64748b"
-              />
-            </TouchableOpacity>
           </View>
+        ) : null}
 
-          <View style={styles.passwordMeta}>
-            <Text style={styles.passwordStrengthLabel}>
-              Strength: <Text style={[styles.passwordStrengthValue, { color: strengthColor }]}>{strengthLabel}</Text>
-            </Text>
-          </View>
+        {infoMessage ? <Text style={styles.info}>{infoMessage}</Text> : null}
+        {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
 
-          <View style={styles.passwordChecklist}>
-            {passwordChecks.map((check) => (
-              <Text
-                key={check.key}
-                style={[
-                  styles.checklistItem,
-                  { color: check.isMet ? "#16a34a" : "#dc2626" },
-                ]}
-              >
-                {check.isMet ? "✓ " : "• "}
-                {check.label}
-              </Text>
-            ))}
-          </View>
-        </View>
-
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Confirm Password</Text>
-          <View style={styles.passwordField}>
-            <TextInput
-              style={[styles.input, styles.passwordInput]}
-              placeholder="Re-enter your password"
-              secureTextEntry={!isConfirmPasswordVisible}
-              value={confirmPassword}
-              onChangeText={(value) => {
-                setConfirmPassword(value);
-                setPasswordError(null);
-              }}
-              onSubmitEditing={handlePasswordSubmit}
-            />
-            <TouchableOpacity
-              onPress={() => setIsConfirmPasswordVisible((prev) => !prev)}
-              accessibilityLabel={
-                isConfirmPasswordVisible
-                  ? "Hide confirm password"
-                  : "Show confirm password"
-              }
-              style={styles.passwordToggle}
-            >
-              <Ionicons
-                name={isConfirmPasswordVisible ? "eye-off" : "eye"}
-                size={20}
-                color="#64748b"
-              />
-            </TouchableOpacity>
-          </View>
-
-          {!!confirmPassword.length && (
-            <Text
-              style={[
-                styles.confirmationText,
-                { color: isConfirmValid ? "#16a34a" : "#dc2626" },
-              ]}
-            >
-              {isConfirmValid ? "Passwords match" : "Passwords do not match"}
-            </Text>
-          )}
-        </View>
-
-        {passwordError && (
-          <Text style={styles.passwordError}>{passwordError}</Text>
+        {otpSent ? (
+          <TouchableOpacity
+            style={styles.primaryButton}
+            onPress={verifyOtp}
+            disabled={isVerifyingOtp}
+          >
+            {isVerifyingOtp ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.primaryButtonText}>Verify OTP</Text>
+            )}
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={styles.primaryButton}
+            onPress={sendOtp}
+            disabled={isSendingOtp}
+          >
+            {isSendingOtp ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.primaryButtonText}>Send OTP</Text>
+            )}
+          </TouchableOpacity>
         )}
 
-        <TouchableOpacity
-          style={styles.signupButton}
-          onPress={handleSignupPress}
-          disabled={!isFormValid || loading}
-        >
-          <Text style={styles.signupButtonText}>
-            {loading ? "Creating..." : "Create Account"}
-          </Text>
-        </TouchableOpacity>
-
-        <Text style={styles.helperText}>Verify your email with OTP after signup.</Text>
-
         <TouchableOpacity onPress={handleLoginPress}>
-          <Text style={styles.loginLink}>Already a user? Log in</Text>
+          <Text style={styles.link}>Already registered? Login</Text>
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -323,108 +344,75 @@ export default function SignupScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0f172a",
-    alignItems: "center",
     justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#0f172a",
     padding: 16,
   },
   card: {
     width: "100%",
-    maxWidth: 400,
-    backgroundColor: "white",
-    borderRadius: 16,
-    paddingVertical: 24,
-    paddingHorizontal: 20,
-    elevation: 6,
+    maxWidth: 420,
+    backgroundColor: "#fff",
+    borderRadius: 18,
+    padding: 22,
+    gap: 14,
   },
   title: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: "700",
-    marginBottom: 6,
+    color: "#0f172a",
+    textAlign: "center",
   },
   subtitle: {
-    fontSize: 13,
-    color: "#6b7280",
-    marginBottom: 20,
+    fontSize: 14,
+    color: "#334155",
+    textAlign: "center",
+    marginBottom: 4,
   },
   inputGroup: {
-    marginBottom: 14,
+    gap: 6,
   },
   label: {
-    fontSize: 13,
-    marginBottom: 4,
-    color: "#4b5563",
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1e293b",
   },
   input: {
     borderWidth: 1,
-    borderColor: "#d1d5db",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    fontSize: 14,
-    backgroundColor: "#f9fafb",
+    borderColor: "#cbd5e1",
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    fontSize: 15,
+    color: "#0f172a",
   },
-  passwordField: {
-    flexDirection: "row",
+  primaryButton: {
+    marginTop: 4,
+    backgroundColor: "#2563eb",
+    borderRadius: 12,
+    paddingVertical: 14,
     alignItems: "center",
   },
-  passwordInput: {
-    flex: 1,
-    paddingRight: 40,
-  },
-  passwordToggle: {
-    position: "absolute",
-    right: 10,
-    padding: 4,
-  },
-  passwordMeta: {
-    marginTop: 6,
-  },
-  passwordStrengthLabel: {
-    fontSize: 12,
-    color: "#6b7280",
-  },
-  passwordStrengthValue: {
+  primaryButtonText: {
+    color: "#fff",
+    fontSize: 16,
     fontWeight: "700",
   },
-  passwordChecklist: {
-    marginTop: 8,
-    gap: 4,
-  },
-  checklistItem: {
-    fontSize: 12,
-  },
-  confirmationText: {
-    marginTop: 6,
-    fontSize: 12,
-  },
-  passwordError: {
-    color: "#dc2626",
-    fontSize: 12,
-    marginBottom: 8,
-  },
-  signupButton: {
-    backgroundColor: "#16a34a",
-    paddingVertical: 12,
-    borderRadius: 10,
-    alignItems: "center",
-    marginTop: 8,
-    marginBottom: 10,
-  },
-  signupButtonText: {
-    color: "white",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  helperText: {
-    fontSize: 11,
-    color: "#6b7280",
-    textAlign: "center",
-  },
-  loginLink: {
-    marginTop: 12,
-    color: "#2563eb",
-    textAlign: "center",
+  info: {
+    color: "#0c4a6e",
     fontSize: 13,
+    textAlign: "center",
+  },
+  error: {
+    color: "#dc2626",
+    fontSize: 13,
+    textAlign: "center",
+  },
+  link: {
+    textAlign: "center",
+    color: "#2563eb",
+    fontSize: 14,
+    fontWeight: "600",
+    marginTop: 2,
   },
 });

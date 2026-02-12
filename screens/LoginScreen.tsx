@@ -1,4 +1,3 @@
-import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -12,9 +11,28 @@ import {
   View,
 } from "react-native";
 import { supabase } from "../services/supabase";
+import { isValidEmail, sanitizeOtp } from "../utils/auth";
+
+type RoleName = "student" | "faculty" | "president" | "admin";
 
 type RoleRow = {
-  name: "student" | "faculty" | "president" | "admin";
+  name: RoleName;
+};
+
+type ProfileWithRole = {
+  roles: RoleRow | RoleRow[] | null;
+};
+
+const OTP_LENGTH = 6;
+
+const resolveRole = (profile: ProfileWithRole | null): RoleName | null => {
+  const roleValue = profile?.roles;
+
+  if (Array.isArray(roleValue)) {
+    return roleValue[0]?.name ?? null;
+  }
+
+  return roleValue?.name ?? null;
 };
 
 export default function LoginScreen() {
@@ -26,17 +44,17 @@ export default function LoginScreen() {
   }>();
 
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [otp, setOtp] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  const [infoMessage, setInfoMessage] = useState<string | null>(null);
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
 
-  const isValidEmail = (value: string) => /\S+@\S+\.\S+/.test(value);
-  const infoMessage = useMemo(() => {
+  const topMessage = useMemo(() => {
     if (params.reason === "password_reset") {
-      return "Password updated. Please log in with your new password.";
+      return "Password updated. Log in with OTP.";
     }
-
 
     if (params.signedOut === "1" || params.reason === "signed_out") {
       return "You have been signed out.";
@@ -45,91 +63,146 @@ export default function LoginScreen() {
     return null;
   }, [params.reason, params.signedOut]);
 
-
   useEffect(() => {
     if (typeof params.email === "string" && params.email.trim()) {
       setEmail(params.email.trim().toLowerCase());
     }
   }, [params.email]);
 
-  const handleLoginPress = async () => {
+  const sendOtp = async () => {
     setErrorMessage(null);
+    setInfoMessage(null);
 
-    if (!email.trim() || !password.trim()) {
-      setErrorMessage("Please enter both email and password.");
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedEmail) {
+      setErrorMessage("Please enter your email.");
       return;
     }
 
-    if (!isValidEmail(email.trim())) {
+    if (!isValidEmail(normalizedEmail)) {
       setErrorMessage("Please enter a valid email address.");
       return;
     }
 
-    setIsSubmitting(true);
+    setIsSendingOtp(true);
 
-    // 1) AUTH LOGIN
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
+    console.log("OTP_SEND_REQUEST", { email: normalizedEmail });
+
+    const { error } = await supabase.auth.signInWithOtp({
+      email: normalizedEmail,
+      options: {
+        shouldCreateUser: false,
+      },
     });
 
-    if (error || !data.user) {
-      setErrorMessage(error?.message || "Invalid login credentials.");
-      setIsSubmitting(false);
+    setIsSendingOtp(false);
+
+    if (error) {
+      setErrorMessage(error.message);
       return;
     }
 
-    // 2) FETCH ROLE
+    setOtpSent(true);
+    setInfoMessage("OTP sent. Enter the 6-digit code from your email.");
+  };
+
+  const verifyOtp = async () => {
+    setErrorMessage(null);
+    setInfoMessage(null);
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const cleanedOtp = sanitizeOtp(otp);
+
+    if (!normalizedEmail) {
+      setErrorMessage("Please enter your email.");
+      return;
+    }
+
+    if (cleanedOtp.length !== OTP_LENGTH) {
+      setErrorMessage("Please enter a valid 6-digit OTP.");
+      return;
+    }
+
+    setIsVerifyingOtp(true);
+
+    console.log("OTP_VERIFY_REQUEST", {
+      email: normalizedEmail,
+      tokenLen: cleanedOtp.length,
+    });
+
+    const { data, error: verifyError } = await supabase.auth.verifyOtp({
+      email: normalizedEmail,
+      token: cleanedOtp,
+      type: "email",
+    });
+
+    console.log("OTP_VERIFY_RESULT", {
+      ok: !verifyError,
+      error: verifyError?.message ?? null,
+    });
+
+    if (verifyError) {
+      const normalized = verifyError.message.toLowerCase();
+      if (normalized.includes("expired") || normalized.includes("invalid")) {
+        setErrorMessage("Invalid or expired OTP. Please request a new code.");
+      } else {
+        setErrorMessage(verifyError.message);
+      }
+      setIsVerifyingOtp(false);
+      return;
+    }
+
+    const userId = data.user?.id;
+
+    if (!userId) {
+      setErrorMessage("Unable to load signed-in user.");
+      setIsVerifyingOtp(false);
+      return;
+    }
+
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("roles(name)")
-      .eq("id", data.user.id)
-      .single();
+      .eq("id", userId)
+      .maybeSingle<ProfileWithRole>();
 
-    if (profileError || !profile?.roles) {
-      setErrorMessage("Unable to determine user role.");
-      setIsSubmitting(false);
+    if (profileError) {
+      setErrorMessage(profileError.message);
+      setIsVerifyingOtp(false);
       return;
     }
 
-    // Normalize role (Supabase may return object or array depending on relation)
-    const roleRow = Array.isArray(profile.roles)
-      ? (profile.roles[0] as RoleRow)
-      : (profile.roles as RoleRow);
-
-    const role = roleRow?.name;
+    const role = resolveRole(profile);
 
     if (!role) {
-      setErrorMessage("User role not found.");
-      setIsSubmitting(false);
+      router.replace("/student-home");
+      setIsVerifyingOtp(false);
       return;
     }
 
-    // 3) ROLE-BASED REDIRECT / BLOCK
     if (role === "faculty" || role === "admin") {
-      await supabase.auth.signOut();
-      setErrorMessage(
-        "Faculty must use Faculty Login. Please use 'Login as Faculty' option below."
-      );
-      setIsSubmitting(false);
+      router.replace("/faculty-home");
+      setIsVerifyingOtp(false);
       return;
     }
 
     if (role === "president") {
       router.replace("/president-home");
-    } else {
-      router.replace("/student-home");
+      setIsVerifyingOtp(false);
+      return;
     }
 
-    setIsSubmitting(false);
-  };
-
-  const handleForgotPasswordPress = () => {
-    router.push("/forgot-password");
+    router.replace("/student-home");
+    setIsVerifyingOtp(false);
   };
 
   const handleRegisterPress = () => {
     router.push("/signup");
+  };
+
+  const handleForgotPasswordPress = () => {
+    router.push("/forgot-password");
   };
 
   const handleFacultyLoginPress = () => {
@@ -143,7 +216,7 @@ export default function LoginScreen() {
     >
       <View style={styles.card}>
         <Text style={styles.title}>Welcome Back!</Text>
-        {infoMessage ? <Text style={styles.info}>{infoMessage}</Text> : null}
+        {topMessage ? <Text style={styles.info}>{topMessage}</Text> : null}
 
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Email</Text>
@@ -154,60 +227,64 @@ export default function LoginScreen() {
             onChangeText={setEmail}
             autoCapitalize="none"
             keyboardType="email-address"
+            editable={!otpSent && !isSendingOtp && !isVerifyingOtp}
           />
         </View>
 
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Password</Text>
-          <View style={styles.passwordField}>
+        {otpSent ? (
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>OTP</Text>
             <TextInput
-              style={[styles.input, styles.passwordInput]}
-              placeholder="Enter password"
-              secureTextEntry={!isPasswordVisible}
-              value={password}
-              onChangeText={setPassword}
+              style={styles.input}
+              placeholder="Enter 6-digit OTP"
+              keyboardType="number-pad"
+              value={otp}
+              onChangeText={(value) => setOtp(sanitizeOtp(value))}
+              maxLength={OTP_LENGTH}
+              editable={!isVerifyingOtp}
             />
-            <TouchableOpacity
-              onPress={() => setIsPasswordVisible((prev) => !prev)}
-              accessibilityLabel={
-                isPasswordVisible ? "Hide password" : "Show password"
-              }
-              style={styles.passwordToggle}
-            >
-              <Ionicons
-                name={isPasswordVisible ? "eye-off" : "eye"}
-                size={20}
-                color="#64748b"
-              />
-            </TouchableOpacity>
           </View>
-        </View>
+        ) : null}
+
+        {infoMessage ? <Text style={styles.info}>{infoMessage}</Text> : null}
+        {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
+
+        {otpSent ? (
+          <TouchableOpacity
+            style={styles.loginButton}
+            onPress={verifyOtp}
+            disabled={isVerifyingOtp}
+          >
+            {isVerifyingOtp ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.loginButtonText}>Verify OTP</Text>
+            )}
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={styles.loginButton}
+            onPress={sendOtp}
+            disabled={isSendingOtp}
+          >
+            {isSendingOtp ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.loginButtonText}>Send OTP</Text>
+            )}
+          </TouchableOpacity>
+        )}
 
         <TouchableOpacity onPress={handleForgotPasswordPress}>
-          <Text style={styles.registerLink}>Forgot Password?</Text>
+          <Text style={styles.link}>Forgot Password?</Text>
         </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.loginButton}
-          onPress={handleLoginPress}
-          disabled={isSubmitting}
-        >
-          {isSubmitting ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.loginButtonText}>Login</Text>
-          )}
-        </TouchableOpacity>
-
-        {errorMessage && <Text style={styles.error}>{errorMessage}</Text>}
 
         <TouchableOpacity onPress={handleRegisterPress}>
-          <Text style={styles.registerLink}>New user? Register</Text>
+          <Text style={styles.link}>New user? Register</Text>
         </TouchableOpacity>
 
-
         <TouchableOpacity onPress={handleFacultyLoginPress}>
-          <Text style={styles.facultyLink}>Login as Faculty</Text>
+          <Text style={styles.link}>Login as Faculty</Text>
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -217,82 +294,73 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0f172a",
-    alignItems: "center",
     justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#f8fafc",
     padding: 16,
   },
   card: {
     width: "100%",
-    maxWidth: 380,
-    backgroundColor: "white",
-    padding: 20,
-    borderRadius: 16,
-    elevation: 6,
+    maxWidth: 400,
+    backgroundColor: "#ffffff",
+    borderRadius: 18,
+    padding: 24,
+    gap: 14,
+    shadowColor: "#0f172a",
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
   title: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: "700",
-    marginBottom: 20,
+    color: "#0f172a",
+    textAlign: "center",
   },
   inputGroup: {
-    marginBottom: 14,
+    gap: 6,
   },
   label: {
-    fontSize: 13,
-    marginBottom: 4,
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1e293b",
   },
   input: {
     borderWidth: 1,
-    borderColor: "#d1d5db",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-  },
-  passwordField: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  passwordInput: {
-    flex: 1,
-    paddingRight: 40,
-  },
-  passwordToggle: {
-    position: "absolute",
-    right: 10,
-    padding: 4,
+    borderColor: "#cbd5e1",
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    fontSize: 15,
+    color: "#0f172a",
   },
   loginButton: {
     backgroundColor: "#2563eb",
-    paddingVertical: 12,
-    borderRadius: 10,
+    borderRadius: 12,
+    paddingVertical: 14,
     alignItems: "center",
-    marginTop: 10,
+    marginTop: 2,
   },
   loginButtonText: {
-    color: "white",
-    fontWeight: "600",
+    color: "#fff",
+    fontWeight: "700",
     fontSize: 16,
   },
-  registerLink: {
-    marginTop: 8,
-    color: "#2563eb",
+  info: {
     textAlign: "center",
-  },
-  facultyLink: {
-    marginTop: 12,
-    color: "#2563eb",
-    textAlign: "center",
+    color: "#0c4a6e",
+    fontSize: 13,
   },
   error: {
-    color: "red",
+    textAlign: "center",
+    color: "#dc2626",
     fontSize: 13,
-    marginTop: 8,
   },
-  info: {
-    color: "#166534",
-    fontSize: 13,
-    marginBottom: 10,
+  link: {
+    textAlign: "center",
+    color: "#2563eb",
+    fontSize: 14,
+    fontWeight: "600",
   },
 });
