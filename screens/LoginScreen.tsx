@@ -11,7 +11,7 @@ import {
   View,
 } from "react-native";
 import { supabase } from "../services/supabase";
-import { isValidEmail, sanitizeOtp } from "../utils/auth";
+import { isValidEmail } from "../utils/auth";
 
 type RoleName = "student" | "faculty" | "president" | "admin";
 
@@ -22,8 +22,6 @@ type RoleRow = {
 type ProfileWithRole = {
   roles: RoleRow | RoleRow[] | null;
 };
-
-const OTP_LENGTH = 6;
 
 const resolveRole = (profile: ProfileWithRole | null): RoleName | null => {
   const roleValue = profile?.roles;
@@ -44,16 +42,13 @@ export default function LoginScreen() {
   }>();
 
   const [email, setEmail] = useState("");
-  const [otp, setOtp] = useState("");
-  const [otpSent, setOtpSent] = useState(false);
+  const [password, setPassword] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [infoMessage, setInfoMessage] = useState<string | null>(null);
-  const [isSendingOtp, setIsSendingOtp] = useState(false);
-  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const topMessage = useMemo(() => {
     if (params.reason === "password_reset") {
-      return "Password updated. Log in with OTP.";
+      return "Password updated. Log in with your password.";
     }
 
     if (params.signedOut === "1" || params.reason === "signed_out") {
@@ -69,14 +64,13 @@ export default function LoginScreen() {
     }
   }, [params.email]);
 
-  const sendOtp = async () => {
+  const handleLoginPress = async () => {
     setErrorMessage(null);
-    setInfoMessage(null);
 
     const normalizedEmail = email.trim().toLowerCase();
 
-    if (!normalizedEmail) {
-      setErrorMessage("Please enter your email.");
+    if (!normalizedEmail || !password.trim()) {
+      setErrorMessage("Please enter both email and password.");
       return;
     }
 
@@ -85,91 +79,28 @@ export default function LoginScreen() {
       return;
     }
 
-    setIsSendingOtp(true);
+    setIsSubmitting(true);
 
-    console.log("OTP_SEND_REQUEST", { email: normalizedEmail });
-
-    const { error } = await supabase.auth.signInWithOtp({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email: normalizedEmail,
-      options: {
-        shouldCreateUser: false,
-      },
+      password,
     });
 
-    setIsSendingOtp(false);
-
-    if (error) {
-      setErrorMessage(error.message);
-      return;
-    }
-
-    setOtpSent(true);
-    setInfoMessage("OTP sent. Enter the 6-digit code from your email.");
-  };
-
-  const verifyOtp = async () => {
-    setErrorMessage(null);
-    setInfoMessage(null);
-
-    const normalizedEmail = email.trim().toLowerCase();
-    const cleanedOtp = sanitizeOtp(otp);
-
-    if (!normalizedEmail) {
-      setErrorMessage("Please enter your email.");
-      return;
-    }
-
-    if (cleanedOtp.length !== OTP_LENGTH) {
-      setErrorMessage("Please enter a valid 6-digit OTP.");
-      return;
-    }
-
-    setIsVerifyingOtp(true);
-
-    console.log("OTP_VERIFY_REQUEST", {
-      email: normalizedEmail,
-      tokenLen: cleanedOtp.length,
-    });
-
-    const { data, error: verifyError } = await supabase.auth.verifyOtp({
-      email: normalizedEmail,
-      token: cleanedOtp,
-      type: "email",
-    });
-
-    console.log("OTP_VERIFY_RESULT", {
-      ok: !verifyError,
-      error: verifyError?.message ?? null,
-    });
-
-    if (verifyError) {
-      const normalized = verifyError.message.toLowerCase();
-      if (normalized.includes("expired") || normalized.includes("invalid")) {
-        setErrorMessage("Invalid or expired OTP. Please request a new code.");
-      } else {
-        setErrorMessage(verifyError.message);
-      }
-      setIsVerifyingOtp(false);
-      return;
-    }
-
-    const userId = data.user?.id;
-
-    if (!userId) {
-      setErrorMessage("Unable to load signed-in user.");
-      setIsVerifyingOtp(false);
+    if (error || !data.user?.id) {
+      setErrorMessage(error?.message || "Invalid login credentials.");
+      setIsSubmitting(false);
       return;
     }
 
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("roles(name)")
-      .eq("id", userId)
+      .eq("id", data.user.id)
       .maybeSingle<ProfileWithRole>();
 
     if (profileError) {
       setErrorMessage(profileError.message);
-      setIsVerifyingOtp(false);
+      setIsSubmitting(false);
       return;
     }
 
@@ -177,24 +108,24 @@ export default function LoginScreen() {
 
     if (!role) {
       router.replace("/student-home");
-      setIsVerifyingOtp(false);
+      setIsSubmitting(false);
       return;
     }
 
     if (role === "faculty" || role === "admin") {
       router.replace("/faculty-home");
-      setIsVerifyingOtp(false);
+      setIsSubmitting(false);
       return;
     }
 
     if (role === "president") {
       router.replace("/president-home");
-      setIsVerifyingOtp(false);
+      setIsSubmitting(false);
       return;
     }
 
     router.replace("/student-home");
-    setIsVerifyingOtp(false);
+    setIsSubmitting(false);
   };
 
   const handleRegisterPress = () => {
@@ -227,53 +158,35 @@ export default function LoginScreen() {
             onChangeText={setEmail}
             autoCapitalize="none"
             keyboardType="email-address"
-            editable={!otpSent && !isSendingOtp && !isVerifyingOtp}
+            editable={!isSubmitting}
           />
         </View>
 
-        {otpSent ? (
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>OTP</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter 6-digit OTP"
-              keyboardType="number-pad"
-              value={otp}
-              onChangeText={(value) => setOtp(sanitizeOtp(value))}
-              maxLength={OTP_LENGTH}
-              editable={!isVerifyingOtp}
-            />
-          </View>
-        ) : null}
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Password</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Enter password"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            editable={!isSubmitting}
+          />
+        </View>
 
-        {infoMessage ? <Text style={styles.info}>{infoMessage}</Text> : null}
         {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
 
-        {otpSent ? (
-          <TouchableOpacity
-            style={styles.loginButton}
-            onPress={verifyOtp}
-            disabled={isVerifyingOtp}
-          >
-            {isVerifyingOtp ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.loginButtonText}>Verify OTP</Text>
-            )}
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={styles.loginButton}
-            onPress={sendOtp}
-            disabled={isSendingOtp}
-          >
-            {isSendingOtp ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.loginButtonText}>Send OTP</Text>
-            )}
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity
+          style={styles.loginButton}
+          onPress={handleLoginPress}
+          disabled={isSubmitting}
+        >
+          {isSubmitting ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.loginButtonText}>Login</Text>
+          )}
+        </TouchableOpacity>
 
         <TouchableOpacity onPress={handleForgotPasswordPress}>
           <Text style={styles.link}>Forgot Password?</Text>
