@@ -1,4 +1,5 @@
 import { useLocalSearchParams } from "expo-router";
+import * as DocumentPicker from "expo-document-picker";
 import { useEffect, useState } from "react";
 import {
   Alert,
@@ -43,8 +44,9 @@ export default function ClubProfileScreen() {
   const [isLoadingClub, setIsLoadingClub] = useState(true);
 
   const [clubName, setClubName] = useState("");
-  const [clubDescription, setClubDescription] = useState("");
   const [clubLogoUrl, setClubLogoUrl] = useState("");
+  const [selectedLogo, setSelectedLogo] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 
   const [about, setAbout] = useState("");
   const [whatToExpect, setWhatToExpect] = useState("");
@@ -60,7 +62,7 @@ export default function ClubProfileScreen() {
       const [{ data: clubData, error: clubError }, { data: sectionData, error: sectionError }] = await Promise.all([
         supabase
           .from("clubs")
-          .select("name, description, logo_url")
+          .select("name, logo_url")
           .eq("id", normalizedClubId)
           .maybeSingle(),
         supabase
@@ -83,7 +85,6 @@ export default function ClubProfileScreen() {
       }
 
       setClubName(clubData?.name ?? "");
-      setClubDescription(clubData?.description ?? "");
       setClubLogoUrl(clubData?.logo_url ?? "");
 
       setAbout(
@@ -131,7 +132,6 @@ export default function ClubProfileScreen() {
       .from("clubs")
       .update({
         name: clubName,
-        description: clubDescription,
         logo_url: clubLogoUrl || null,
       })
       .eq("id", normalizedClubId);
@@ -171,6 +171,100 @@ export default function ClubProfileScreen() {
     cancelEdit();
   };
 
+  const handlePickLogo = async () => {
+    if (!isManager || !isEditing) return;
+
+    const result = await DocumentPicker.getDocumentAsync({
+      type: ["image/png", "image/jpeg"],
+      copyToCacheDirectory: true,
+    });
+
+    if (result.canceled) return;
+
+    const asset = result.assets[0];
+    const mimeType = (asset.mimeType ?? "").toLowerCase();
+    const isValidType = mimeType === "image/png" || mimeType === "image/jpeg";
+
+    if (!isValidType) {
+      Alert.alert("Invalid file type", "Please choose a PNG or JPEG image.");
+      return;
+    }
+
+    if (asset.size && asset.size > 2 * 1024 * 1024) {
+      Alert.alert("File too large", "Logo file size must be 2MB or less.");
+      return;
+    }
+
+    setSelectedLogo(asset);
+  };
+
+  const handleUploadLogo = async () => {
+    if (!normalizedClubId || !selectedLogo || !isManager || !isEditing) return;
+
+    try {
+      setIsUploadingLogo(true);
+
+      const response = await fetch(selectedLogo.uri);
+      const logoBlob = await response.blob();
+
+      const extension = selectedLogo.mimeType === "image/png" ? "png" : "jpg";
+      const uploadPath = `${normalizedClubId}/logo-${Date.now()}.${extension}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("club-logos")
+        .upload(uploadPath, logoBlob, {
+          contentType: selectedLogo.mimeType ?? undefined,
+          upsert: true,
+        });
+
+      if (uploadError) {
+        Alert.alert("Upload failed", uploadError.message);
+        return;
+      }
+
+      const { data } = supabase.storage.from("club-logos").getPublicUrl(uploadPath);
+      const publicUrl = data.publicUrl;
+
+      const { error: updateError } = await supabase
+        .from("clubs")
+        .update({ logo_url: publicUrl })
+        .eq("id", normalizedClubId);
+
+      if (updateError) {
+        Alert.alert("Upload failed", updateError.message);
+        return;
+      }
+
+      setClubLogoUrl(publicUrl);
+      setSelectedLogo(null);
+      Alert.alert("Success", "Club logo uploaded successfully.");
+    } catch {
+      Alert.alert("Upload failed", "Unable to upload logo right now. Please try again.");
+    } finally {
+      setIsUploadingLogo(false);
+    }
+  };
+
+  const handleRemoveLogo = async () => {
+    if (!normalizedClubId || !isManager || !isEditing) return;
+
+    const { error } = await supabase
+      .from("clubs")
+      .update({ logo_url: null })
+      .eq("id", normalizedClubId);
+
+    if (error) {
+      Alert.alert("Error", error.message);
+      return;
+    }
+
+    setClubLogoUrl("");
+    setSelectedLogo(null);
+    Alert.alert("Success", "Club logo removed.");
+  };
+
+  const previewLogoUrl = selectedLogo?.uri ?? clubLogoUrl;
+
   return (
     <ScrollView style={[styles.container, { backgroundColor: theme.background }]}>
       <Text style={[styles.clubName, { color: theme.text }]}> 
@@ -178,7 +272,7 @@ export default function ClubProfileScreen() {
       </Text>
 
       <View style={styles.logoDisplayWrap}>
-        <ClubLogo logoUrl={clubLogoUrl} clubName={clubName} size={120} />
+        <ClubLogo logoUrl={previewLogoUrl} clubName={clubName} size={120} />
         <Text style={[styles.logoHint, { color: theme.text }]}>Club Logo</Text>
       </View>
 
@@ -195,34 +289,48 @@ export default function ClubProfileScreen() {
         <Text style={[styles.readOnlyValue, { color: theme.text }]}>{clubName}</Text>
       )}
 
-      <Text style={[styles.fieldLabel, { color: theme.text }]}>Description</Text>
-      <TextInput
-        style={[styles.input, styles.multiInput, { color: theme.text, borderColor: "#9ca3af" }]}
-        value={clubDescription}
-        editable={isEditing && isManager}
-        onChangeText={setClubDescription}
-        multiline
-        placeholder="Club description"
-        placeholderTextColor="#6b7280"
-      />
-
       {!isStudent && (
         <>
-          <Text style={[styles.fieldLabel, { color: theme.text }]}>Logo URL</Text>
-          <TextInput
-            style={[styles.input, { color: theme.text, borderColor: "#9ca3af" }]}
-            value={clubLogoUrl}
-            editable={isEditing && isManager}
-            onChangeText={setClubLogoUrl}
-            autoCapitalize="none"
-            placeholder="https://..."
-            placeholderTextColor="#6b7280"
-          />
-
           {isEditing && isManager ? (
             <View style={styles.logoPreviewWrap}>
               <Text style={[styles.logoPreviewLabel, { color: theme.text }]}>Live preview</Text>
-              <ClubLogo logoUrl={clubLogoUrl} clubName={clubName} size={88} showErrorMessage />
+              <ClubLogo logoUrl={previewLogoUrl} clubName={clubName} size={88} showErrorMessage />
+
+              <TouchableOpacity
+                style={styles.logoActionBtn}
+                onPress={handlePickLogo}
+                disabled={isUploadingLogo}
+              >
+                <Text style={styles.logoActionBtnText}>
+                  {selectedLogo ? "Change selected logo" : "Upload logo"}
+                </Text>
+              </TouchableOpacity>
+
+              {selectedLogo ? (
+                <Text style={[styles.logoFileName, { color: theme.text }]}>{selectedLogo.name}</Text>
+              ) : null}
+
+              <View style={styles.logoActionsRow}>
+                <TouchableOpacity
+                  style={[styles.logoActionBtn, styles.logoUploadBtn]}
+                  onPress={handleUploadLogo}
+                  disabled={isUploadingLogo || !selectedLogo}
+                >
+                  <Text style={styles.logoActionBtnText}>
+                    {isUploadingLogo ? "Uploading..." : "Save uploaded logo"}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.logoActionBtn, styles.logoRemoveBtn]}
+                  onPress={handleRemoveLogo}
+                  disabled={isUploadingLogo}
+                >
+                  <Text style={styles.logoActionBtnText}>Remove logo</Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={[styles.logoRules, { color: theme.text }]}>PNG/JPEG only • Max 2MB</Text>
             </View>
           ) : null}
         </>
@@ -288,15 +396,38 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     marginBottom: 16,
   },
-  multiInput: {
-    minHeight: 90,
-    textAlignVertical: "top",
-  },
   logoPreviewWrap: {
     marginTop: -6,
     marginBottom: 18,
     alignItems: "center",
     gap: 8,
+  },
+  logoActionsRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  logoActionBtn: {
+    backgroundColor: "#2563eb",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  logoUploadBtn: {
+    backgroundColor: "#16a34a",
+  },
+  logoRemoveBtn: {
+    backgroundColor: "#dc2626",
+  },
+  logoActionBtnText: {
+    color: "#fff",
+    fontWeight: "600",
+  },
+  logoFileName: {
+    fontSize: 12,
+  },
+  logoRules: {
+    fontSize: 12,
+    opacity: 0.75,
   },
   logoPreviewLabel: {
     fontSize: 13,
