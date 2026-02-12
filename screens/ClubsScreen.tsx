@@ -15,12 +15,19 @@ type Club = {
   description: string | null;
 };
 
-const CLUB_COLUMN_OPTIONS = [
+const CLUB_SELECT_TRIES = [
   "id, name, logo_url, description",
   "id, name, description",
   "id, name, logo_url",
   "id, name",
 ] as const;
+
+type ClubRowPartial = {
+  id: string;
+  name: string;
+  description?: string | null;
+  logo_url?: string | null;
+};
 
 export default function ClubsScreen() {
   const router = useRouter();
@@ -37,18 +44,18 @@ export default function ClubsScreen() {
     const loadClubs = async () => {
       setLoading(true);
 
-      let data: { id: string; name: string; description?: string | null; logo_url?: string | null }[] | null = null;
-      let error: { code?: string } | null = null;
+      let data: ClubRowPartial[] | null = null;
+      let error: { code?: string; message?: string } | null = null;
 
-      for (const columns of CLUB_COLUMN_OPTIONS) {
+      // ✅ Try progressively smaller selects to support schemas missing logo_url/description
+      for (const columns of CLUB_SELECT_TRIES) {
         const response = await supabase.from("clubs").select(columns).order("name");
 
-        data = response.data;
+        data = (response.data as ClubRowPartial[]) ?? null;
         error = response.error;
 
-        if (!error || error.code !== "42703") {
-          break;
-        }
+        // If error is NOT "column does not exist", stop trying
+        if (!error || error.code !== "42703") break;
       }
 
       if (!isActive) return;
