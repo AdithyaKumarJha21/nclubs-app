@@ -31,8 +31,13 @@ const PROFILE_FETCH_DELAYS_MS = [300, 600, 900] as const;
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const routerRef = useRef(router);
+  const userRef = useRef<User | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+
+  routerRef.current = router;
+  userRef.current = user;
 
   const isHydratingRef = useRef(false);
   const lastHandledEventRef = useRef<string | null>(null);
@@ -133,7 +138,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       isHydratingRef.current = true;
-      setLoading(true);
+      if (event === "INITIAL_LOAD" || userRef.current === null) {
+        setLoading(true);
+      }
 
       try {
         const {
@@ -160,7 +167,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (lastRoutedSessionKeyRef.current !== sessionKey) {
           const path = getRouteForRole(role);
-          router.replace(path);
+          routerRef.current.replace(path);
           lastRoutedSessionKeyRef.current = sessionKey;
           console.log("[auth] routed", { role, path });
         }
@@ -181,7 +188,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         lastHandledEventRef.current = event;
       }
     },
-    [clearInvalidSession, resolveRoleWithRetry, router],
+    [clearInvalidSession, resolveRoleWithRetry],
   );
 
   useEffect(() => {
