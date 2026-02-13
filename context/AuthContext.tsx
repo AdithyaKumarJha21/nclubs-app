@@ -1,4 +1,4 @@
-import { useRouter } from "expo-router";
+import { usePathname, useRouter } from "expo-router";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { supabase } from "../services/supabase";
 
@@ -31,12 +31,15 @@ const PROFILE_FETCH_DELAYS_MS = [300, 600, 900] as const;
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const routerRef = useRef(router);
+  const pathnameRef = useRef(pathname);
   const userRef = useRef<User | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   routerRef.current = router;
+  pathnameRef.current = pathname;
   userRef.current = user;
 
   const isHydratingRef = useRef(false);
@@ -164,13 +167,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.log("[auth] role resolved", { role, userId });
 
         const sessionKey = `${userId}:${role}`;
+        const path = getRouteForRole(role);
+        const isAlreadyAtRoleRoute = pathnameRef.current === path;
 
-        if (lastRoutedSessionKeyRef.current !== sessionKey) {
-          const path = getRouteForRole(role);
+        if (!isAlreadyAtRoleRoute && lastRoutedSessionKeyRef.current !== sessionKey) {
           routerRef.current.replace(path);
-          lastRoutedSessionKeyRef.current = sessionKey;
           console.log("[auth] routed", { role, path });
         }
+
+        lastRoutedSessionKeyRef.current = sessionKey;
 
         setLoading(false);
       } catch (err) {
