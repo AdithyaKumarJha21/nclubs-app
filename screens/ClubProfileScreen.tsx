@@ -417,28 +417,62 @@ export default function ClubProfileScreen() {
         await supabase.from("club_files").delete().eq("id", existingLogoFile.id);
       }
 
-      // ✅ IMPORTANT: your club_files policy uses uploader_id = auth.uid()
-      // so write uploader_id, not uploaded_by
-      const { data: insertedLogoFile, error: logoFileInsertError } =
-        await supabase
+      const logoFileInsertPayloadTries = [
+        {
+          club_id: normalizedClubId,
+          uploader_id: user?.id ?? null,
+          bucket: uploadedLogo.bucket,
+          path: uploadedLogo.path,
+          file_type: CLUB_LOGO_FILE_TYPE,
+          title: CLUB_LOGO_TITLE,
+        },
+        {
+          club_id: normalizedClubId,
+          uploaded_by: user?.id ?? null,
+          bucket: uploadedLogo.bucket,
+          path: uploadedLogo.path,
+          file_type: CLUB_LOGO_FILE_TYPE,
+          title: CLUB_LOGO_TITLE,
+        },
+        {
+          club_id: normalizedClubId,
+          bucket: uploadedLogo.bucket,
+          path: uploadedLogo.path,
+          file_type: CLUB_LOGO_FILE_TYPE,
+          title: CLUB_LOGO_TITLE,
+        },
+      ] as const;
+
+      let insertedLogoFile: ClubFileRow | null = null;
+      let logoFileInsertError: { code?: string; message: string } | null = null;
+
+      for (const payload of logoFileInsertPayloadTries) {
+        const response = await supabase
           .from("club_files")
-          .insert({
-            club_id: normalizedClubId,
-            uploader_id: user?.id ?? null,
-            bucket: uploadedLogo.bucket,
-            path: uploadedLogo.path,
-            file_type: CLUB_LOGO_FILE_TYPE,
-            title: CLUB_LOGO_TITLE,
-          })
+          .insert(payload)
           .select("id, club_id, bucket, path, file_type, title, created_at")
           .maybeSingle();
+
+        insertedLogoFile = (response.data as ClubFileRow | null) ?? null;
+        logoFileInsertError = response.error;
+
+        if (!logoFileInsertError) break;
+
+        const normalizedErrorMessage = logoFileInsertError.message.toLowerCase();
+        const isMissingColumnError =
+          logoFileInsertError.code === "42703" ||
+          normalizedErrorMessage.includes("could not find") ||
+          normalizedErrorMessage.includes("column");
+
+        if (!isMissingColumnError) break;
+      }
 
       if (logoFileInsertError) {
         Alert.alert("Error", logoFileInsertError.message);
         return;
       }
 
-      setExistingLogoFile((insertedLogoFile as ClubFileRow | null) ?? null);
+      setExistingLogoFile(insertedLogoFile);
     }
 
     const sectionPayloads = [
