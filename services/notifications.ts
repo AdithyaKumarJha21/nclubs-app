@@ -146,7 +146,7 @@ export const getVisibleNotifications = async (
   role: Role,
   userId: string
 ): Promise<NotificationRecord[]> => {
-  if (role === "student" || role === "admin") {
+  if (role !== "faculty" && role !== "president") {
     const { data, error } = await supabase
       .from("notifications")
       .select("id, club_id, title, body, created_at")
