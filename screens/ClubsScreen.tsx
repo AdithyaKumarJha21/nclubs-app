@@ -7,6 +7,7 @@ import ClubSearchEmptyState from "../components/ClubSearchEmptyState";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabase";
 import { useTheme } from "../theme/ThemeContext";
+import { resolvePublicClubLogoUrl } from "../utils/clubLogos";
 
 type Club = {
   id: string;
@@ -72,12 +73,18 @@ export default function ClubsScreen() {
         return;
       }
 
-      const { data: clubFileRows } = await supabase
+      const { data: clubFileRows, error: clubFilesError } = await supabase
         .from("club_files")
         .select("club_id, bucket, path, file_type, title, created_at")
         .order("created_at", { ascending: false });
 
       const latestLogoByClub = new Map<string, string>();
+
+      if (clubFilesError) {
+        // Students may not have SELECT access on club_files in some environments.
+        // Fall back to clubs.logo_url without logging noisy errors to end-users.
+        console.warn("club_files read skipped:", clubFilesError.message);
+      }
 
       for (const row of ((clubFileRows as ClubFileLogoRow[] | null) ?? [])) {
         if (latestLogoByClub.has(row.club_id)) continue;
@@ -85,14 +92,18 @@ export default function ClubsScreen() {
         const isLogo = row.file_type === "logo" || row.title === "Club Logo";
         if (!isLogo) continue;
 
-        const publicUrl = supabase.storage.from(row.bucket).getPublicUrl(row.path).data.publicUrl;
+        const publicUrl = resolvePublicClubLogoUrl(row.path, row.bucket);
+        if (!publicUrl) continue;
         latestLogoByClub.set(row.club_id, publicUrl);
       }
 
       const normalizedClubs: Club[] = (data ?? []).map((club) => ({
         id: club.id,
         name: club.name,
-        logo_url: club.logo_url ?? latestLogoByClub.get(club.id) ?? null,
+        logo_url:
+          resolvePublicClubLogoUrl(club.logo_url) ||
+          latestLogoByClub.get(club.id) ||
+          null,
       }));
 
       setClubs(normalizedClubs);

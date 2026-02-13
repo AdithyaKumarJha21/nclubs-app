@@ -22,9 +22,12 @@ import { useEditMode } from "../hooks/useEditMode";
 import { canManageClub } from "../services/permissions";
 import { supabase } from "../services/supabase";
 import { useTheme } from "../theme/ThemeContext";
+import {
+  CLUB_LOGO_BUCKET_CANDIDATES,
+  resolvePublicClubLogoUrl,
+} from "../utils/clubLogos";
 
 const CLUB_SELECT_TRIES = ["name, logo_url", "name"] as const;
-const CLUB_LOGO_BUCKET_CANDIDATES = ["club-logos", "club_logos"] as const;
 
 // ✅ keep these from codex branch (used in club_files + matching existing logo)
 const CLUB_LOGO_FILE_TYPE = "logo";
@@ -145,13 +148,11 @@ export default function ClubProfileScreen() {
     );
 
     const derivedLogoUrl = matchedLogoFile
-      ? supabase.storage
-          .from(matchedLogoFile.bucket)
-          .getPublicUrl(matchedLogoFile.path).data.publicUrl
+      ? resolvePublicClubLogoUrl(matchedLogoFile.path, matchedLogoFile.bucket)
       : "";
 
     setClubName(clubData?.name ?? "");
-    setClubLogoUrl(clubData?.logo_url ?? derivedLogoUrl);
+    setClubLogoUrl(resolvePublicClubLogoUrl(clubData?.logo_url) || derivedLogoUrl);
     setExistingLogoFile(matchedLogoFile ?? null);
 
     setAbout(sectionData?.find((s) => s.title === "About Us")?.content ?? "");
