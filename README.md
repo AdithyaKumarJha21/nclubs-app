@@ -48,3 +48,14 @@ Join our community of developers creating universal apps.
 
 - [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
 - [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+
+## Notifications troubleshooting (students see no notifications)
+
+If notifications exist in Supabase but students still see **"No notifications at the moment"**, your `notifications` table RLS policies are likely blocking student `SELECT` access.
+
+1. Open Supabase Dashboard → **SQL Editor**.
+2. Run the SQL in `NOTIFICATIONS_RLS_SETUP.sql`.
+3. Sign out and sign back in the app (to refresh auth/session).
+4. Re-open Notifications as a student.
+
+The key requirement is a student-specific `SELECT` policy on `public.notifications` (so it works alongside your existing `notifications_read_for_assigned_club` policy).
