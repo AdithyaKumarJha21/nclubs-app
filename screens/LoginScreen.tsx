@@ -13,26 +13,6 @@ import {
 import { supabase } from "../services/supabase";
 import { isValidEmail } from "../utils/auth";
 
-type RoleName = "student" | "faculty" | "president" | "admin";
-
-type RoleRow = {
-  name: RoleName;
-};
-
-type ProfileWithRole = {
-  roles: RoleRow | RoleRow[] | null;
-};
-
-const resolveRole = (profile: ProfileWithRole | null): RoleName | null => {
-  const roleValue = profile?.roles;
-
-  if (Array.isArray(roleValue)) {
-    return roleValue[0]?.name ?? null;
-  }
-
-  return roleValue?.name ?? null;
-};
-
 export default function LoginScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{
@@ -92,39 +72,7 @@ export default function LoginScreen() {
       return;
     }
 
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("roles(name)")
-      .eq("id", data.user.id)
-      .maybeSingle<ProfileWithRole>();
-
-    if (profileError) {
-      setErrorMessage(profileError.message);
-      setIsSubmitting(false);
-      return;
-    }
-
-    const role = resolveRole(profile);
-
-    if (!role) {
-      router.replace("/student-home");
-      setIsSubmitting(false);
-      return;
-    }
-
-    if (role === "faculty" || role === "admin") {
-      router.replace("/faculty-home");
-      setIsSubmitting(false);
-      return;
-    }
-
-    if (role === "president") {
-      router.replace("/president-home");
-      setIsSubmitting(false);
-      return;
-    }
-
-    router.replace("/student-home");
+    console.log("[auth] login success", { userId: data.user.id });
     setIsSubmitting(false);
   };
 
