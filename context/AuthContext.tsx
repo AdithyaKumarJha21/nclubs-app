@@ -229,11 +229,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [hydrateSession]);
 
-  return (
-    <AuthContext.Provider value={{ user, loading }}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={{ user, loading }}>{children}</AuthContext.Provider>;
 }
 
 export const useAuth = () => useContext(AuthContext);
