@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { StyleSheet, Text, TextInput, View } from "react-native";
 
 import { useAuth } from "../context/AuthContext";
 import {
@@ -8,6 +8,7 @@ import {
   getAttendanceHistoryForClub,
 } from "../services/attendanceHistory";
 import { supabase } from "../services/supabase";
+import { useTheme } from "../theme/ThemeContext";
 import {
     isFacultyView,
     isStudentView,
@@ -39,6 +40,7 @@ type EventScan = {
 export default function AttendanceHistoryScreen() {
   const router = useRouter();
   const { user, loading } = useAuth();
+  const { isDark } = useTheme();
 
   // State management for faculty/president view
   const [events, setEvents] = useState<EventListItem[]>([]);
@@ -47,6 +49,8 @@ export default function AttendanceHistoryScreen() {
   );
   const [attendanceData, setAttendanceData] = useState<AttendanceStudent[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [eventSearchQuery, setEventSearchQuery] = useState("");
+  const [studentSearchQuery, setStudentSearchQuery] = useState("");
 
   // For student view
   const [studentEvents, setStudentEvents] = useState<StudentAttendanceEvent[]>([]);
@@ -69,16 +73,17 @@ export default function AttendanceHistoryScreen() {
       setIsLoading(true);
       const { data, error } = await supabase
         .from("events")
-        .select("id, title, event_date, club_id")
+        .select("id, title, event_date, club_id, clubs(name)")
         .order("event_date", { ascending: false });
 
       if (error) throw error;
 
-      const formattedEvents: EventListItem[] = (data || []).map((event) => ({
+      const formattedEvents: EventListItem[] = (data || []).map((event: any) => ({
         id: event.id,
         title: event.title,
         date: event.event_date,
         club_id: event.club_id,
+        club_name: event.clubs?.name ?? null,
       }));
 
       setEvents(formattedEvents);
@@ -152,6 +157,7 @@ export default function AttendanceHistoryScreen() {
      =============================== */
   const handleSelectEvent = async (event: EventListItem) => {
     setSelectedEvent(event);
+    setStudentSearchQuery("");
     await fetchAttendanceForEvent(event.id, event.club_id);
   };
 
@@ -200,7 +206,54 @@ export default function AttendanceHistoryScreen() {
   const handleBackToEvents = () => {
     setSelectedEvent(null);
     setAttendanceData([]);
+    setStudentSearchQuery("");
   };
+
+  const normalizedEventQuery = eventSearchQuery.trim().toLowerCase();
+  const filteredEvents = useMemo(() => {
+    if (!normalizedEventQuery) return events;
+
+    return events.filter((event) => {
+      const title = event.title.toLowerCase();
+      const clubName = event.club_name?.toLowerCase() ?? "";
+      const dateText = event.date
+        ? new Date(event.date).toLocaleDateString().toLowerCase()
+        : "";
+
+      return (
+        title.includes(normalizedEventQuery) ||
+        clubName.includes(normalizedEventQuery) ||
+        dateText.includes(normalizedEventQuery)
+      );
+    });
+  }, [events, normalizedEventQuery]);
+
+  const normalizedStudentQuery = studentSearchQuery.trim().toLowerCase();
+  const filteredStudents = useMemo(() => {
+    if (!normalizedStudentQuery) return attendanceData;
+
+    const rankByUsnMatch = (student: AttendanceStudent): number => {
+      const usn = (student.student_usn ?? student.usn ?? "").toLowerCase();
+      if (!usn) return 2;
+      if (usn.startsWith(normalizedStudentQuery)) return 0;
+      if (usn.includes(normalizedStudentQuery)) return 1;
+      return 2;
+    };
+
+    return attendanceData
+      .filter((student) => {
+        const usn = (student.student_usn ?? student.usn ?? "").toLowerCase();
+        const name = student.name.toLowerCase();
+        const email = (student.email ?? "").toLowerCase();
+
+        return (
+          usn.includes(normalizedStudentQuery) ||
+          name.includes(normalizedStudentQuery) ||
+          email.includes(normalizedStudentQuery)
+        );
+      })
+      .sort((a, b) => rankByUsnMatch(a) - rankByUsnMatch(b));
+  }, [attendanceData, normalizedStudentQuery]);
 
   if (loading || !user) {
     return null;
@@ -226,21 +279,54 @@ export default function AttendanceHistoryScreen() {
 
       {/* Faculty / President UI - Event List */}
       {facultyView && !selectedEvent && (
-        <EventList
-          events={events}
-          onSelectEvent={handleSelectEvent}
-          isLoading={isLoading}
-        />
+        <View style={styles.sectionContainer}>
+          <TextInput
+            style={[
+              styles.searchInput,
+              {
+                color: isDark ? "#fff" : "#111",
+                borderColor: isDark ? "#444" : "#d0d7de",
+                backgroundColor: isDark ? "#1e1e1e" : "#fff",
+              },
+            ]}
+            value={eventSearchQuery}
+            onChangeText={setEventSearchQuery}
+            placeholder="Search events by name, date, or club"
+            placeholderTextColor={isDark ? "#999" : "#888"}
+          />
+          <EventList
+            events={filteredEvents}
+            onSelectEvent={handleSelectEvent}
+            isLoading={isLoading}
+          />
+        </View>
       )}
 
       {/* Faculty / President UI - Attendance for Selected Event */}
       {facultyView && selectedEvent && (
-        <AttendanceStudentList
-          students={attendanceData}
-          eventTitle={selectedEvent.title}
-          isLoading={isLoading}
-          onBack={handleBackToEvents}
-        />
+        <View style={styles.sectionContainer}>
+          <TextInput
+            style={[
+              styles.searchInput,
+              {
+                color: isDark ? "#fff" : "#111",
+                borderColor: isDark ? "#444" : "#d0d7de",
+                backgroundColor: isDark ? "#1e1e1e" : "#fff",
+              },
+            ]}
+            value={studentSearchQuery}
+            onChangeText={setStudentSearchQuery}
+            placeholder="Search students by USN, name, or email"
+            placeholderTextColor={isDark ? "#999" : "#888"}
+            autoCapitalize="none"
+          />
+          <AttendanceStudentList
+            students={filteredStudents}
+            eventTitle={selectedEvent.title}
+            isLoading={isLoading}
+            onBack={handleBackToEvents}
+          />
+        </View>
       )}
     </View>
   );
@@ -255,5 +341,15 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "700",
     marginBottom: 12,
+  },
+  sectionContainer: {
+    flex: 1,
+  },
+  searchInput: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 10,
   },
 });
