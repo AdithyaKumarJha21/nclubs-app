@@ -15,6 +15,14 @@ export type SendNotificationInput = {
   role: Role;
 };
 
+export type NotificationRecord = {
+  id: string;
+  club_id: string;
+  title: string;
+  body: string;
+  created_at: string;
+};
+
 type SupabaseRequestError = Error & { code?: string };
 
 export const getNotificationClubOptions = async (
@@ -107,6 +115,63 @@ export const sendNotification = async ({
 
   if (error) {
     throw error;
+  }
+
+  return data;
+};
+
+export const getNotificationCountForClubToday = async (
+  clubId: string
+): Promise<number> => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  const { count, error } = await supabase
+    .from("notifications")
+    .select("id", { count: "exact", head: true })
+    .eq("club_id", clubId)
+    .gte("created_at", today.toISOString())
+    .lt("created_at", tomorrow.toISOString());
+
+  if (error) {
+    throw new Error(normalizeSupabaseError(error));
+  }
+
+  return count ?? 0;
+};
+
+export const getVisibleNotifications = async (
+  role: Role,
+  userId: string
+): Promise<NotificationRecord[]> => {
+  if (role === "student" || role === "admin") {
+    const { data, error } = await supabase
+      .from("notifications")
+      .select("id, club_id, title, body, created_at")
+      .order("created_at", { ascending: false });
+
+    if (error || !data) {
+      throw new Error(normalizeSupabaseError(error));
+    }
+
+    return data;
+  }
+
+  const clubIds = await getMyClubs({ id: userId, role });
+  if (clubIds.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("notifications")
+    .select("id, club_id, title, body, created_at")
+    .in("club_id", clubIds)
+    .order("created_at", { ascending: false });
+
+  if (error || !data) {
+    throw new Error(normalizeSupabaseError(error));
   }
 
   return data;
