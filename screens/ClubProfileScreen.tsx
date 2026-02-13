@@ -47,6 +47,7 @@ type ClubFileRow = {
   file_type?: string | null;
   title?: string | null;
   created_at?: string | null;
+  uploader_id?: string | null; // ✅ matches policy column name assumption
 };
 
 const isBucketNotFoundError = (
@@ -139,7 +140,8 @@ export default function ClubProfileScreen() {
       .order("created_at", { ascending: false });
 
     const matchedLogoFile = ((clubFileRows as ClubFileRow[] | null) ?? []).find(
-      (file) => file.file_type === CLUB_LOGO_FILE_TYPE || file.title === CLUB_LOGO_TITLE
+      (file) =>
+        file.file_type === CLUB_LOGO_FILE_TYPE || file.title === CLUB_LOGO_TITLE
     );
 
     const derivedLogoUrl = matchedLogoFile
@@ -174,7 +176,12 @@ export default function ClubProfileScreen() {
       .channel(`club-profile-${normalizedClubId}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "clubs", filter: `id=eq.${normalizedClubId}` },
+        {
+          event: "*",
+          schema: "public",
+          table: "clubs",
+          filter: `id=eq.${normalizedClubId}`,
+        },
         () => {
           loadClub();
         }
@@ -310,8 +317,9 @@ export default function ClubProfileScreen() {
         ),
       ];
 
-      let lastUploadError: { message?: string; statusCode?: string | number } | null =
-        null;
+      let lastUploadError:
+        | { message?: string; statusCode?: string | number }
+        | null = null;
 
       for (const bucketName of bucketCandidates) {
         const { error: uploadError } = await supabase.storage
@@ -409,19 +417,21 @@ export default function ClubProfileScreen() {
         await supabase.from("club_files").delete().eq("id", existingLogoFile.id);
       }
 
-      // Write uploaded_by to match club_files schema
-      const { data: insertedLogoFile, error: logoFileInsertError } = await supabase
-        .from("club_files")
-        .insert({
-          club_id: normalizedClubId,
-          uploaded_by: user?.id ?? null,
-          bucket: uploadedLogo.bucket,
-          path: uploadedLogo.path,
-          file_type: CLUB_LOGO_FILE_TYPE,
-          title: CLUB_LOGO_TITLE,
-        })
-        .select("id, club_id, bucket, path, file_type, title, created_at")
-        .maybeSingle();
+      // ✅ IMPORTANT: your club_files policy uses uploader_id = auth.uid()
+      // so write uploader_id, not uploaded_by
+      const { data: insertedLogoFile, error: logoFileInsertError } =
+        await supabase
+          .from("club_files")
+          .insert({
+            club_id: normalizedClubId,
+            uploader_id: user?.id ?? null,
+            bucket: uploadedLogo.bucket,
+            path: uploadedLogo.path,
+            file_type: CLUB_LOGO_FILE_TYPE,
+            title: CLUB_LOGO_TITLE,
+          })
+          .select("id, club_id, bucket, path, file_type, title, created_at")
+          .maybeSingle();
 
       if (logoFileInsertError) {
         Alert.alert("Error", logoFileInsertError.message);
@@ -432,9 +442,24 @@ export default function ClubProfileScreen() {
     }
 
     const sectionPayloads = [
-      { club_id: normalizedClubId, title: "About Us", content: about, order_index: 1 },
-      { club_id: normalizedClubId, title: "What to Expect", content: whatToExpect, order_index: 2 },
-      { club_id: normalizedClubId, title: "Achievements", content: achievements, order_index: 3 },
+      {
+        club_id: normalizedClubId,
+        title: "About Us",
+        content: about,
+        order_index: 1,
+      },
+      {
+        club_id: normalizedClubId,
+        title: "What to Expect",
+        content: whatToExpect,
+        order_index: 2,
+      },
+      {
+        club_id: normalizedClubId,
+        title: "Achievements",
+        content: achievements,
+        order_index: 3,
+      },
     ] as const;
 
     for (const section of sectionPayloads) {
@@ -483,9 +508,7 @@ export default function ClubProfileScreen() {
   };
 
   return (
-    <ScrollView
-      style={[styles.container, { backgroundColor: theme.background }]}
-    >
+    <ScrollView style={[styles.container, { backgroundColor: theme.background }]}>
       <Text style={[styles.clubName, { color: theme.text }]}>Club Profile</Text>
 
       <View style={styles.logoDisplayWrap}>
@@ -516,10 +539,7 @@ export default function ClubProfileScreen() {
 
           {isEditing ? (
             <View style={styles.logoActionsRow}>
-              <TouchableOpacity
-                style={styles.logoButton}
-                onPress={handleChooseLogo}
-              >
+              <TouchableOpacity style={styles.logoButton} onPress={handleChooseLogo}>
                 <Text style={styles.logoButtonText}>
                   {displayedLogoUrl ? "Change Logo" : "Choose Image"}
                 </Text>
