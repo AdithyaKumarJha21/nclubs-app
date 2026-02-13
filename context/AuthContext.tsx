@@ -31,11 +31,15 @@ const PROFILE_FETCH_DELAYS_MS = [300, 600, 900] as const;
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const routerRef = useRef(router);
+  const userRef = useRef<User | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
+  routerRef.current = router;
+  userRef.current = user;
+
   const isHydratingRef = useRef(false);
-  const pendingHydrationEventRef = useRef<string | null>(null);
   const lastHandledEventRef = useRef<string | null>(null);
   const lastHandledUserIdRef = useRef<string | null>(null);
   const lastRoutedSessionKeyRef = useRef<string | null>(null);
@@ -128,15 +132,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const hydrateSession = useCallback(
-    async (event: string, options?: { forceLoading?: boolean }) => {
+    async (event: string) => {
       if (isHydratingRef.current) {
-        pendingHydrationEventRef.current = event;
         return;
       }
 
       isHydratingRef.current = true;
-
-      if (options?.forceLoading) {
+      if (event === "INITIAL_LOAD" || userRef.current === null) {
         setLoading(true);
       }
 
@@ -156,14 +158,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         const userId = session.user.id;
         const role = await resolveRoleWithRetry(userId);
-        setUser({ id: userId, role });
+        const resolvedUser: User = { id: userId, role };
+
+        setUser(resolvedUser);
         console.log("[auth] role resolved", { role, userId });
 
         const sessionKey = `${userId}:${role}`;
 
         if (lastRoutedSessionKeyRef.current !== sessionKey) {
           const path = getRouteForRole(role);
-          router.replace(path);
+          routerRef.current.replace(path);
           lastRoutedSessionKeyRef.current = sessionKey;
           console.log("[auth] routed", { role, path });
         }
@@ -182,20 +186,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } finally {
         isHydratingRef.current = false;
         lastHandledEventRef.current = event;
-
-        const pendingEvent = pendingHydrationEventRef.current;
-        pendingHydrationEventRef.current = null;
-
-        if (pendingEvent) {
-          void hydrateSession(pendingEvent, { forceLoading: false });
-        }
       }
     },
-    [clearInvalidSession, resolveRoleWithRetry, router],
+    [clearInvalidSession, resolveRoleWithRetry],
   );
 
   useEffect(() => {
-    void hydrateSession("INITIAL_LOAD", { forceLoading: true });
+    hydrateSession("INITIAL_LOAD");
 
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       const userId = session?.user?.id ?? null;
@@ -217,19 +214,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         lastHandledUserIdRef.current = null;
         lastHandledEventRef.current = event;
         lastRoutedSessionKeyRef.current = null;
-        pendingHydrationEventRef.current = null;
         setLoading(false);
         return;
       }
 
-      if (event === "INITIAL_SESSION" || event === "SIGNED_IN") {
+      if (event === "INITIAL_SESSION" || event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
         lastHandledUserIdRef.current = userId;
-        void hydrateSession(event, { forceLoading: true });
-      }
-
-      if (event === "TOKEN_REFRESHED") {
-        lastHandledUserIdRef.current = userId;
-        void hydrateSession(event, { forceLoading: false });
+        hydrateSession(event);
       }
     });
 
