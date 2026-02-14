@@ -1,11 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -28,6 +30,8 @@ export default function LoginScreen() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  const floatPrimary = useRef(new Animated.Value(0)).current;
+  const floatSecondary = useRef(new Animated.Value(0)).current;
 
   const topMessage = useMemo(() => {
     if (params.reason === "password_reset") {
@@ -46,6 +50,48 @@ export default function LoginScreen() {
       setEmail(params.email.trim().toLowerCase());
     }
   }, [params.email]);
+
+  useEffect(() => {
+    const createFloatingLoop = (
+      value: Animated.Value,
+      duration: number
+    ) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(value, {
+            toValue: 1,
+            duration,
+            useNativeDriver: true,
+          }),
+          Animated.timing(value, {
+            toValue: 0,
+            duration,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+
+    const primaryLoop = createFloatingLoop(floatPrimary, 4600);
+    const secondaryLoop = createFloatingLoop(floatSecondary, 5200);
+
+    primaryLoop.start();
+    secondaryLoop.start();
+
+    return () => {
+      primaryLoop.stop();
+      secondaryLoop.stop();
+    };
+  }, [floatPrimary, floatSecondary]);
+
+  const primaryFloatTranslate = floatPrimary.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-10, 12],
+  });
+
+  const secondaryFloatTranslate = floatSecondary.interpolate({
+    inputRange: [0, 1],
+    outputRange: [10, -12],
+  });
 
   const handleLoginPress = async () => {
     setErrorMessage(null);
@@ -122,77 +168,117 @@ export default function LoginScreen() {
       style={styles.container}
       behavior={Platform.select({ ios: "padding", android: undefined })}
     >
-      <View style={styles.card}>
-        <Text style={styles.title}>Welcome Back!</Text>
-        {topMessage ? <Text style={styles.info}>{topMessage}</Text> : null}
+      <View style={styles.background}>
+        <Animated.View
+          style={[
+            styles.shape,
+            styles.topBlob,
+            { transform: [{ translateY: primaryFloatTranslate }] },
+          ]}
+        />
+        <Animated.View
+          style={[
+            styles.shape,
+            styles.midBlob,
+            { transform: [{ translateY: secondaryFloatTranslate }] },
+          ]}
+        />
+        <Animated.View
+          style={[
+            styles.ring,
+            styles.ringTop,
+            { transform: [{ translateY: secondaryFloatTranslate }] },
+          ]}
+        />
+        <Animated.View
+          style={[
+            styles.ring,
+            styles.ringBottom,
+            { transform: [{ translateY: primaryFloatTranslate }] },
+          ]}
+        />
+        <View style={styles.noiseDot} />
+      </View>
 
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Email</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="you@nmit.ac.in"
-            value={email}
-            onChangeText={setEmail}
-            autoCapitalize="none"
-            keyboardType="email-address"
-            editable={!isSubmitting}
-          />
-        </View>
+      <ScrollView contentContainerStyle={styles.scrollBody} keyboardShouldPersistTaps="handled">
+        <View style={styles.card}>
+          <Text style={styles.brand}>N-CLUB</Text>
+          <Text style={styles.title}>Manage your campus clubs</Text>
+          <Text style={styles.subtitle}>Streamline club events, attendance, and communication in one place.</Text>
+          {topMessage ? <Text style={styles.info}>{topMessage}</Text> : null}
 
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Password</Text>
-          <View style={styles.passwordField}>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Email</Text>
             <TextInput
-              style={[styles.input, styles.passwordInput]}
-              placeholder="Enter password"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry={!isPasswordVisible}
+              style={styles.input}
+              placeholder="you@nmit.ac.in"
+              placeholderTextColor="#9f9487"
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
               editable={!isSubmitting}
             />
-            <TouchableOpacity
-              onPress={() => setIsPasswordVisible((prev) => !prev)}
-              accessibilityLabel={
-                isPasswordVisible ? "Hide password" : "Show password"
-              }
-              style={styles.passwordToggle}
-              disabled={isSubmitting}
-            >
-              <Ionicons
-                name={isPasswordVisible ? "eye-off" : "eye"}
-                size={20}
-                color="#64748b"
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Password</Text>
+            <View style={styles.passwordField}>
+              <TextInput
+                style={[styles.input, styles.passwordInput]}
+                placeholder="Enter password"
+                placeholderTextColor="#9f9487"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!isPasswordVisible}
+                editable={!isSubmitting}
               />
+              <TouchableOpacity
+                onPress={() => setIsPasswordVisible((prev) => !prev)}
+                accessibilityLabel={
+                  isPasswordVisible ? "Hide password" : "Show password"
+                }
+                style={styles.passwordToggle}
+                disabled={isSubmitting}
+              >
+                <Ionicons
+                  name={isPasswordVisible ? "eye-off" : "eye"}
+                  size={20}
+                  color="#8a7f73"
+                />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <TouchableOpacity onPress={handleForgotPasswordPress}>
+            <Text style={styles.link}>Forgot Password?</Text>
+          </TouchableOpacity>
+
+          {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
+
+          <TouchableOpacity
+            style={styles.loginButton}
+            onPress={handleLoginPress}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.loginButtonText}>Login</Text>
+            )}
+          </TouchableOpacity>
+
+          <View style={styles.actionRow}>
+            <TouchableOpacity onPress={handleRegisterPress}>
+              <Text style={styles.link}>New user? Register</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={handleFacultyLoginPress}>
+              <Text style={styles.link}>Login as Faculty</Text>
             </TouchableOpacity>
           </View>
         </View>
-
-        <TouchableOpacity onPress={handleForgotPasswordPress}>
-          <Text style={styles.link}>Forgot Password?</Text>
-        </TouchableOpacity>
-
-        {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
-
-        <TouchableOpacity
-          style={styles.loginButton}
-          onPress={handleLoginPress}
-          disabled={isSubmitting}
-        >
-          {isSubmitting ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.loginButtonText}>Login</Text>
-          )}
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={handleRegisterPress}>
-          <Text style={styles.link}>New user? Register</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={handleFacultyLoginPress}>
-          <Text style={styles.link}>Login as Faculty</Text>
-        </TouchableOpacity>
-      </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -200,29 +286,48 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: "#ece5dd",
+  },
+  background: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  scrollBody: {
+    flexGrow: 1,
     justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#f8fafc",
-    padding: 16,
+    padding: 18,
   },
   card: {
     width: "100%",
     maxWidth: 400,
-    backgroundColor: "#ffffff",
-    borderRadius: 18,
+    alignSelf: "center",
+    backgroundColor: "#f8f2eb",
+    borderRadius: 30,
     padding: 24,
-    gap: 14,
-    shadowColor: "#0f172a",
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: "#e9ddd1",
+    shadowColor: "#6d5f52",
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 7,
+  },
+  brand: {
+    fontSize: 14,
+    fontWeight: "700",
+    letterSpacing: 2,
+    color: "#3f3a35",
   },
   title: {
-    fontSize: 24,
+    fontSize: 37,
     fontWeight: "700",
-    color: "#0f172a",
-    textAlign: "center",
+    color: "#2f2b27",
+    lineHeight: 42,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: "#59514a",
+    lineHeight: 22,
   },
   inputGroup: {
     gap: 6,
@@ -230,16 +335,17 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#1e293b",
+    color: "#3a342f",
   },
   input: {
     borderWidth: 1,
-    borderColor: "#cbd5e1",
-    borderRadius: 10,
+    borderColor: "#baaea1",
+    borderRadius: 14,
     paddingVertical: 12,
     paddingHorizontal: 14,
     fontSize: 15,
-    color: "#0f172a",
+    color: "#2f2b27",
+    backgroundColor: "#fffaf4",
   },
   passwordField: {
     flexDirection: "row",
@@ -255,11 +361,11 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   loginButton: {
-    backgroundColor: "#2563eb",
-    borderRadius: 12,
+    backgroundColor: "#e96452",
+    borderRadius: 14,
     paddingVertical: 14,
     alignItems: "center",
-    marginTop: 2,
+    marginTop: 6,
   },
   loginButtonText: {
     color: "#fff",
@@ -267,19 +373,66 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   info: {
-    textAlign: "center",
-    color: "#0c4a6e",
+    color: "#8b5b52",
     fontSize: 13,
   },
   error: {
-    textAlign: "center",
-    color: "#dc2626",
+    color: "#d3302f",
     fontSize: 13,
   },
+  actionRow: {
+    marginTop: 6,
+    gap: 8,
+  },
   link: {
-    textAlign: "center",
-    color: "#2563eb",
-    fontSize: 14,
+    color: "#e46350",
+    fontSize: 13,
     fontWeight: "600",
+  },
+  shape: {
+    position: "absolute",
+    borderRadius: 999,
+    opacity: 0.9,
+  },
+  topBlob: {
+    width: 270,
+    height: 270,
+    top: -40,
+    right: -90,
+    backgroundColor: "#ef6d5a",
+  },
+  midBlob: {
+    width: 220,
+    height: 220,
+    bottom: -50,
+    left: -60,
+    backgroundColor: "#f48a79",
+  },
+  ring: {
+    position: "absolute",
+    width: 280,
+    height: 280,
+    borderRadius: 140,
+    borderWidth: 1.2,
+    borderColor: "rgba(233, 84, 70, 0.45)",
+  },
+  ringTop: {
+    top: 120,
+    right: -130,
+  },
+  ringBottom: {
+    bottom: 80,
+    left: -150,
+  },
+  noiseDot: {
+    position: "absolute",
+    top: 170,
+    left: 20,
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: "rgba(58, 52, 47, 0.55)",
   },
 });
