@@ -58,7 +58,7 @@ export default function FacultyLoginScreen() {
 
     if (profileError || !profile?.roles) {
       setErrorMessage("Unable to determine user role.");
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: "local" });
       setIsSubmitting(false);
       return;
     }
@@ -66,7 +66,7 @@ export default function FacultyLoginScreen() {
     const role = extractRoleName(profile);
 
     if (role !== "faculty") {
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: "local" });
       const message =
         "Students and Presidents cannot login here. Please use the Student Login.";
       setErrorMessage(message);

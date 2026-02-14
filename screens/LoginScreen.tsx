@@ -83,7 +83,7 @@ export default function LoginScreen() {
 
     if (profileError) {
       setErrorMessage("Unable to determine user role.");
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: "local" });
       setIsSubmitting(false);
       return;
     }
@@ -91,7 +91,7 @@ export default function LoginScreen() {
     const role = extractRoleName(profile);
 
     if (role === "faculty" || role === "admin") {
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: "local" });
       const message = "Faculty cannot login here. Please use the 'Login as Faculty' option.";
       setErrorMessage(message);
       Alert.alert("Access restricted", message);
@@ -100,6 +100,8 @@ export default function LoginScreen() {
     }
 
     console.log("[auth] login success", { userId: data.user.id });
+    const destination = role === "president" ? "/president-home" : "/student-home";
+    router.replace(destination);
     setIsSubmitting(false);
   };
 
