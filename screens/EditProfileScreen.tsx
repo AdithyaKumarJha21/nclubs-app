@@ -128,29 +128,6 @@ export default function EditProfileScreen() {
         />
       </View>
 
-      {/* Email Input */}
-      <View style={styles.fieldContainer}>
-        <Text style={[styles.label, { color: isDark ? "#aaa" : "#666" }]}>
-          Email
-        </Text>
-        <TextInput
-          placeholder="Enter your email"
-          placeholderTextColor={isDark ? "#666" : "#ccc"}
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
-          style={[
-            styles.input,
-            {
-              borderColor: isDark ? "#444" : "#ddd",
-              color: isDark ? "#fff" : "#000",
-              backgroundColor: isDark ? "#2a2a2a" : "#f9f9f9",
-            },
-          ]}
-          editable={!isSaving}
-        />
-      </View>
-
       {/* Save Button */}
       <TouchableOpacity
         style={[styles.button, { opacity: isSaving ? 0.6 : 1 }]}
