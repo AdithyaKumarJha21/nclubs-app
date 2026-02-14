@@ -642,7 +642,7 @@ export default function ClubProfileScreen() {
 
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: theme.text }]}>Gallery</Text>
-        <ClubGallery />
+        <ClubGallery clubId={normalizedClubId} isManager={isManager} />
       </View>
 
       {isManager && (
