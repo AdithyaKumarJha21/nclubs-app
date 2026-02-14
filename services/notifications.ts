@@ -23,6 +23,20 @@ export type NotificationRecord = {
   created_at: string;
 };
 
+const getTodayUtcWindow = () => {
+  const now = new Date();
+  const startOfTodayUtc = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+  );
+  const startOfTomorrowUtc = new Date(startOfTodayUtc);
+  startOfTomorrowUtc.setUTCDate(startOfTomorrowUtc.getUTCDate() + 1);
+
+  return {
+    startIso: startOfTodayUtc.toISOString(),
+    endIso: startOfTomorrowUtc.toISOString(),
+  };
+};
+
 type SupabaseRequestError = Error & { code?: string };
 
 export const getNotificationClubOptions = async (
@@ -123,17 +137,14 @@ export const sendNotification = async ({
 export const getNotificationCountForClubToday = async (
   clubId: string
 ): Promise<number> => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
+  const { startIso, endIso } = getTodayUtcWindow();
 
   const { count, error } = await supabase
     .from("notifications")
     .select("id", { count: "exact", head: true })
     .eq("club_id", clubId)
-    .gte("created_at", today.toISOString())
-    .lt("created_at", tomorrow.toISOString());
+    .gte("created_at", startIso)
+    .lt("created_at", endIso);
 
   if (error) {
     throw new Error(normalizeSupabaseError(error));
@@ -146,10 +157,14 @@ export const getVisibleNotifications = async (
   role: Role,
   userId: string
 ): Promise<NotificationRecord[]> => {
+  const { startIso, endIso } = getTodayUtcWindow();
+
   if (role !== "faculty" && role !== "president") {
     const { data, error } = await supabase
       .from("notifications")
       .select("id, club_id, title, body, created_at")
+      .gte("created_at", startIso)
+      .lt("created_at", endIso)
       .order("created_at", { ascending: false });
 
     if (error || !data) {
@@ -168,6 +183,8 @@ export const getVisibleNotifications = async (
     .from("notifications")
     .select("id, club_id, title, body, created_at")
     .in("club_id", clubIds)
+    .gte("created_at", startIso)
+    .lt("created_at", endIso)
     .order("created_at", { ascending: false });
 
   if (error || !data) {
