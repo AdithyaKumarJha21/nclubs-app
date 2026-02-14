@@ -13,10 +13,7 @@ import {
   View,
 } from "react-native";
 import { supabase } from "../services/supabase";
-
-type RoleRow = {
-  name: "student" | "faculty" | "admin";
-};
+import { extractRoleName, isValidEmail } from "../utils/auth";
 
 export default function FacultyLoginScreen() {
   const router = useRouter();
@@ -26,8 +23,6 @@ export default function FacultyLoginScreen() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
-
-  const isValidEmail = (value: string) => /\S+@\S+\.\S+/.test(value);
 
   const handleLoginPress = async () => {
     setErrorMessage(null);
@@ -50,7 +45,7 @@ export default function FacultyLoginScreen() {
     });
 
     if (error || !data.user) {
-      setErrorMessage(error?.message || "Invalid login credentials.");
+      setErrorMessage("Invalid email or password");
       setIsSubmitting(false);
       return;
     }
@@ -63,21 +58,21 @@ export default function FacultyLoginScreen() {
 
     if (profileError || !profile?.roles) {
       setErrorMessage("Unable to determine user role.");
+      await supabase.auth.signOut({ scope: "local" });
       setIsSubmitting(false);
       return;
     }
 
-    const roleRow = Array.isArray(profile.roles)
-      ? (profile.roles[0] as RoleRow)
-      : (profile.roles as RoleRow);
-
-    const role = roleRow?.name;
+    const role = extractRoleName(profile);
 
     if (role !== "faculty") {
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: "local" });
+      const message =
+        "Students and Presidents cannot login here. Please use the Student Login.";
+      setErrorMessage(message);
       Alert.alert(
         "Access restricted",
-        "Students can't login here. Please use the Student Login."
+        message,
       );
       setIsSubmitting(false);
       return;
