@@ -146,6 +146,7 @@ export default function NotificationsInboxScreen() {
             >
               <View style={styles.cardContent}>
                 <View style={styles.cardText}>
+                  <Text style={styles.clubName}>{item.club_name}</Text>
                   <Text style={[styles.title, { color: theme.text }]}>
                     {item.title}
                   </Text>
@@ -215,6 +216,15 @@ const styles = StyleSheet.create({
   title: {
     fontWeight: "600",
     fontSize: 14,
+    marginTop: 4,
+  },
+  clubName: {
+    alignSelf: "flex-start",
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+    color: "#1d4ed8",
   },
   message: {
     fontSize: 12,
