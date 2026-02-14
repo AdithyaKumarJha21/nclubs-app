@@ -28,7 +28,6 @@ const AuthContext = createContext<AuthContextType>({
 });
 
 const PROFILE_FETCH_DELAYS_MS = [300, 600, 900] as const;
-const ROLE_GUARDED_LOGIN_ROUTES = new Set(["/login", "/faculty-login"]);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -203,15 +202,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       const userId = session?.user?.id ?? null;
       console.log("[auth] event", event, { userId });
-
-      const shouldSkipSignedInHydration =
-        event === "SIGNED_IN" && ROLE_GUARDED_LOGIN_ROUTES.has(pathnameRef.current);
-
-      if (shouldSkipSignedInHydration) {
-        lastHandledUserIdRef.current = userId;
-        lastHandledEventRef.current = event;
-        return;
-      }
 
       const isDuplicateAuthEvent =
         (event === "INITIAL_SESSION" || event === "SIGNED_IN") &&
