@@ -304,39 +304,6 @@ export default function ClubGallery({ clubId, isManager = false }: ClubGalleryPr
     await loadImages();
   };
 
-  const swapOrder = async (sourceIndex: number, targetIndex: number) => {
-    if (!isManager) return;
-    if (targetIndex < 0 || targetIndex >= images.length) return;
-
-    const source = images[sourceIndex];
-    const target = images[targetIndex];
-
-    if (!source || !target) return;
-
-    const updates = [
-      supabase
-        .from("club_gallery_images")
-        .update({ order_index: target.order_index })
-        .eq("id", source.id),
-      supabase
-        .from("club_gallery_images")
-        .update({ order_index: source.order_index })
-        .eq("id", target.id),
-    ];
-
-    const [sourceUpdate, targetUpdate] = await Promise.all(updates);
-
-    if (sourceUpdate.error || targetUpdate.error) {
-      Alert.alert(
-        "Reorder failed",
-        sourceUpdate.error?.message ?? targetUpdate.error?.message ?? "Unknown error"
-      );
-      return;
-    }
-
-    await loadImages();
-  };
-
   return (
     <View>
       {isManager ? (
@@ -393,26 +360,10 @@ export default function ClubGallery({ clubId, isManager = false }: ClubGalleryPr
               {isManager ? (
                 <View style={styles.imageControls}>
                   <TouchableOpacity
-                    style={[styles.controlButton, sourceIndexDisabled(index === 0)]}
-                    onPress={() => swapOrder(index, index - 1)}
-                    disabled={index === 0}
-                  >
-                    <Text style={styles.controlText}>←</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
                     style={styles.controlButton}
                     onPress={() => deleteImage(image.id)}
                   >
                     <Text style={styles.controlText}>Delete</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.controlButton, sourceIndexDisabled(index === images.length - 1)]}
-                    onPress={() => swapOrder(index, index + 1)}
-                    disabled={index === images.length - 1}
-                  >
-                    <Text style={styles.controlText}>→</Text>
                   </TouchableOpacity>
                 </View>
               ) : null}
@@ -460,8 +411,6 @@ export default function ClubGallery({ clubId, isManager = false }: ClubGalleryPr
     </View>
   );
 }
-
-const sourceIndexDisabled = (disabled: boolean) => (disabled ? { opacity: 0.45 } : null);
 
 const styles = StyleSheet.create({
   managerCard: {
