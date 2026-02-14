@@ -11,6 +11,7 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../services/supabase";
 import { useTheme } from "../theme/ThemeContext";
 
@@ -21,6 +22,9 @@ export default function ChangePasswordScreen() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [isOldPasswordVisible, setIsOldPasswordVisible] = useState(false);
+  const [isNewPasswordVisible, setIsNewPasswordVisible] = useState(false);
+  const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] = useState(false);
 
   // ✅ PASSWORD VALIDATION FUNCTION
   const validatePassword = (password: string): string | null => {
@@ -118,44 +122,89 @@ export default function ChangePasswordScreen() {
           Update your password to keep your account secure
         </Text>
 
-        <TextInput
-          placeholder="Old Password"
-          secureTextEntry
-          style={[
-            styles.input,
-            { borderColor: theme.text, color: theme.text },
-          ]}
-          placeholderTextColor={theme.text}
-          value={oldPassword}
-          onChangeText={setOldPassword}
-          editable={!loading}
-        />
+        <View style={[styles.passwordField, { borderColor: theme.text }]}>
+          <TextInput
+            placeholder="Old Password"
+            secureTextEntry={!isOldPasswordVisible}
+            style={[
+              styles.input,
+              styles.passwordInput,
+              { color: theme.text },
+            ]}
+            placeholderTextColor={theme.text}
+            value={oldPassword}
+            onChangeText={setOldPassword}
+            editable={!loading}
+          />
+          <TouchableOpacity
+            onPress={() => setIsOldPasswordVisible((prev) => !prev)}
+            accessibilityLabel={isOldPasswordVisible ? "Hide old password" : "Show old password"}
+            disabled={loading}
+            style={styles.passwordToggle}
+          >
+            <Ionicons
+              name={isOldPasswordVisible ? "eye-off" : "eye"}
+              size={20}
+              color={theme.text}
+            />
+          </TouchableOpacity>
+        </View>
 
-        <TextInput
-          placeholder="New Password"
-          secureTextEntry
-          style={[
-            styles.input,
-            { borderColor: theme.text, color: theme.text },
-          ]}
-          placeholderTextColor={theme.text}
-          value={newPassword}
-          onChangeText={setNewPassword}
-          editable={!loading}
-        />
+        <View style={[styles.passwordField, { borderColor: theme.text }]}>
+          <TextInput
+            placeholder="New Password"
+            secureTextEntry={!isNewPasswordVisible}
+            style={[
+              styles.input,
+              styles.passwordInput,
+              { color: theme.text },
+            ]}
+            placeholderTextColor={theme.text}
+            value={newPassword}
+            onChangeText={setNewPassword}
+            editable={!loading}
+          />
+          <TouchableOpacity
+            onPress={() => setIsNewPasswordVisible((prev) => !prev)}
+            accessibilityLabel={isNewPasswordVisible ? "Hide new password" : "Show new password"}
+            disabled={loading}
+            style={styles.passwordToggle}
+          >
+            <Ionicons
+              name={isNewPasswordVisible ? "eye-off" : "eye"}
+              size={20}
+              color={theme.text}
+            />
+          </TouchableOpacity>
+        </View>
 
-        <TextInput
-          placeholder="Confirm Password"
-          secureTextEntry
-          style={[
-            styles.input,
-            { borderColor: theme.text, color: theme.text },
-          ]}
-          placeholderTextColor={theme.text}
-          value={confirmPassword}
-          onChangeText={setConfirmPassword}
-          editable={!loading}
-        />
+        <View style={[styles.passwordField, { borderColor: theme.text }]}>
+          <TextInput
+            placeholder="Confirm Password"
+            secureTextEntry={!isConfirmPasswordVisible}
+            style={[
+              styles.input,
+              styles.passwordInput,
+              { color: theme.text },
+            ]}
+            placeholderTextColor={theme.text}
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
+            editable={!loading}
+          />
+          <TouchableOpacity
+            onPress={() => setIsConfirmPasswordVisible((prev) => !prev)}
+            accessibilityLabel={isConfirmPasswordVisible ? "Hide confirm password" : "Show confirm password"}
+            disabled={loading}
+            style={styles.passwordToggle}
+          >
+            <Ionicons
+              name={isConfirmPasswordVisible ? "eye-off" : "eye"}
+              size={20}
+              color={theme.text}
+            />
+          </TouchableOpacity>
+        </View>
 
         <TouchableOpacity
           style={[styles.button, { opacity: loading ? 0.6 : 1 }]}
@@ -199,11 +248,23 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   input: {
+    padding: 12,
+    fontSize: 16,
+  },
+  passwordField: {
+    flexDirection: "row",
+    alignItems: "center",
     borderWidth: 1,
     borderRadius: 8,
-    padding: 12,
     marginBottom: 16,
-    fontSize: 16,
+  },
+  passwordInput: {
+    flex: 1,
+    marginBottom: 0,
+  },
+  passwordToggle: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
   button: {
     backgroundColor: "#dc2626",
