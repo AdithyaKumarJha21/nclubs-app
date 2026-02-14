@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { useRouter } from "expo-router";
 import { Role } from "../context/AuthContext";
 import { CalendarDay as CalendarDayType } from "../utils/calendarUtils";
 import EventDot from "./EventDot";
@@ -51,25 +50,11 @@ const formatTime = (value: string) => {
   });
 };
 
-const getEventDetailRoute = (role?: Role) => {
-  if (role === "president") {
-    return "/president/events/[id]";
-  }
-
-  if (role === "student") {
-    return "/student/events/[id]";
-  }
-
-  return "/event-details";
-};
-
 export default function CalendarDay({
   day,
   events = [],
   isDark = false,
-  role,
 }: CalendarDayProps) {
-  const router = useRouter();
   const [showModal, setShowModal] = useState(false);
 
   const isCurrentMonth = day.isCurrentMonth;
@@ -77,12 +62,6 @@ export default function CalendarDay({
   const hasEvents = events.length > 0;
 
   const dateLabel = useMemo(() => day.date.toLocaleDateString(), [day.date]);
-
-  const openEventDetails = (eventId: string) => {
-    const pathname = getEventDetailRoute(role);
-    router.push({ pathname, params: { id: eventId } });
-    setShowModal(false);
-  };
 
   return (
     <>
@@ -151,18 +130,6 @@ export default function CalendarDay({
                   </Text>
                   <Text style={[styles.metaText, { color: isDark ? "#ddd" : "#444" }]}>🏷️ {event.clubName || "General"}</Text>
                   <Text style={[styles.metaText, { color: isDark ? "#ddd" : "#444" }]}>📍 {event.location || "TBA"}</Text>
-
-                  <TouchableOpacity
-                    style={[
-                      styles.actionButton,
-                      { backgroundColor: event.status === "past" ? "#6b7280" : "#0066cc" },
-                    ]}
-                    onPress={() => openEventDetails(event.id)}
-                  >
-                    <Text style={styles.actionButtonText}>
-                      {event.status === "past" ? "View Recap" : "View Details"}
-                    </Text>
-                  </TouchableOpacity>
                 </View>
               ))}
             </View>
@@ -251,18 +218,6 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 11,
     fontWeight: "700",
-  },
-  actionButton: {
-    marginTop: 6,
-    alignSelf: "flex-start",
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 6,
-  },
-  actionButtonText: {
-    color: "#fff",
-    fontWeight: "600",
-    fontSize: 12,
   },
   closeButton: {
     backgroundColor: "#111827",
