@@ -6,6 +6,7 @@ export type EventListItem = {
   title: string;
   date?: string;
   club_id?: string;
+  club_name?: string | null;
 };
 
 interface EventListProps {

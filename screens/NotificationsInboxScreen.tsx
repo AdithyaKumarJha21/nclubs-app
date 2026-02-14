@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
@@ -12,67 +12,53 @@ import {
     View,
 } from "react-native";
 import { useAuth } from "../context/AuthContext";
-import { deleteNotification } from "../services/notifications";
+import { deleteNotification, getVisibleNotifications, NotificationRecord } from "../services/notifications";
 import { supabase } from "../services/supabase";
 import { useTheme } from "../theme/ThemeContext";
-
-type Notification = {
-  id: string;
-  title: string;
-  body: string;
-  created_at: string;
-};
 
 export default function NotificationsInboxScreen() {
   const router = useRouter();
   const { theme } = useTheme();
   const { user } = useAuth();
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchAndFilterNotifications();
-    // Refresh notifications every 10 seconds to catch expirations
-    const interval = setInterval(fetchAndFilterNotifications, 10000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const fetchAndFilterNotifications = async () => {
+  const fetchVisibleRoleNotifications = useCallback(async () => {
     try {
-      setLoading(true);
-
-      // ✅ FETCH ALL NOTIFICATIONS FROM DATABASE
-      const { data, error } = await supabase
-        .from("notifications")
-        .select("id, title, body, created_at")
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        console.error("Error fetching notifications:", error);
+      if (!user) {
         setNotifications([]);
-        setLoading(false);
         return;
       }
 
-      // ✅ FILTER OUT EXPIRED NOTIFICATIONS (OLDER THAN 48 HOURS)
-      const now = new Date();
-      const validNotifications = (data || []).filter(
-        (notification: any) => {
-          const createdAt = new Date(notification.created_at);
-          const ageInMs = now.getTime() - createdAt.getTime();
-          const ageInHours = ageInMs / (1000 * 60 * 60);
-          return ageInHours < 48; // Only show if less than 48 hours old
-        }
-      );
-
-      setNotifications(validNotifications);
-      setLoading(false);
+      setLoading(true);
+      const data = await getVisibleNotifications(user.role, user.id);
+      setNotifications(data);
     } catch (err) {
       console.error("Unexpected error:", err);
       setNotifications([]);
+    } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    fetchVisibleRoleNotifications();
+
+    const channel = supabase
+      .channel("notifications-feed")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "notifications" },
+        () => {
+          fetchVisibleRoleNotifications();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchVisibleRoleNotifications]);
 
   const handleDeleteNotification = async (notificationId: string) => {
     // Check if user is faculty or president
@@ -93,7 +79,7 @@ export default function NotificationsInboxScreen() {
               const result = await deleteNotification(notificationId);
 
               if (result.ok) {
-                await fetchAndFilterNotifications();
+                await fetchVisibleRoleNotifications();
                 Alert.alert("Success", "Notification deleted");
                 return;
               }
@@ -160,6 +146,7 @@ export default function NotificationsInboxScreen() {
             >
               <View style={styles.cardContent}>
                 <View style={styles.cardText}>
+                  <Text style={styles.clubName}>{item.club_name}</Text>
                   <Text style={[styles.title, { color: theme.text }]}>
                     {item.title}
                   </Text>
@@ -229,6 +216,15 @@ const styles = StyleSheet.create({
   title: {
     fontWeight: "600",
     fontSize: 14,
+    marginTop: 4,
+  },
+  clubName: {
+    alignSelf: "flex-start",
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+    color: "#1d4ed8",
   },
   message: {
     fontSize: 12,

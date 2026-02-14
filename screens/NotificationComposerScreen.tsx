@@ -13,11 +13,11 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { normalizeSupabaseError } from "../services/api/errors";
 import {
+  getNotificationCountForClubToday,
   getNotificationClubOptions,
   NotificationClubOption,
   sendNotification,
 } from "../services/notifications";
-import { supabase } from "../services/supabase";
 import { useTheme } from "../theme/ThemeContext";
 
 type SupabaseRequestError = Error & { code?: string };
@@ -74,36 +74,28 @@ export default function NotificationComposerScreen() {
         return;
       }
 
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-
-      const { count, error } = await supabase
-        .from("notifications")
-        .select("id", { count: "exact", head: true })
-        .gte("created_at", today.toISOString())
-        .lt("created_at", tomorrow.toISOString());
-
-      if (error) {
-        console.error("Error checking notification limit:", error);
+      if (!clubId) {
+        setNotificationsToday(0);
         setCanSend(false);
         return;
       }
 
-      const resolvedCount = count ?? 0;
+      const resolvedCount = await getNotificationCountForClubToday(clubId);
       setNotificationsToday(resolvedCount);
       setCanSend(resolvedCount < 2);
     } catch (err) {
       console.error("Unexpected error:", err);
       setCanSend(false);
     }
-  }, [router, user]);
+  }, [clubId, router, user]);
+
+  useEffect(() => {
+    loadClubOptions();
+  }, [loadClubOptions]);
 
   useEffect(() => {
     checkNotificationLimit();
-    loadClubOptions();
-  }, [checkNotificationLimit, loadClubOptions]);
+  }, [checkNotificationLimit]);
 
   const handleSendNotification = async () => {
     if (!title.trim() || !body.trim()) {
@@ -134,16 +126,6 @@ export default function NotificationComposerScreen() {
       return;
     }
 
-    const {
-      data: { user: authUser },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !authUser) {
-      Alert.alert("Error", "Session expired. Please login again.");
-      return;
-    }
-
     setLoading(true);
 
     try {
@@ -157,8 +139,9 @@ export default function NotificationComposerScreen() {
       Alert.alert("Success", "Notification sent!");
       setTitle("");
       setBody("");
-      setNotificationsToday((prev) => prev + 1);
-      setCanSend(notificationsToday + 1 < 2);
+      const updatedCount = notificationsToday + 1;
+      setNotificationsToday(updatedCount);
+      setCanSend(updatedCount < 2);
 
       setTimeout(() => {
         router.back();
@@ -188,7 +171,7 @@ export default function NotificationComposerScreen() {
     >
       <Text style={[styles.heading, { color: theme.text }]}>Send Notification</Text>
 
-      <Text style={[styles.limitText, { color: theme.text }]}>Notifications sent today: {notificationsToday}/2</Text>
+      <Text style={[styles.limitText, { color: theme.text }]}>Notifications sent today for selected club: {notificationsToday}/2</Text>
 
       <Text style={[styles.label, { color: theme.text }]}>Club</Text>
       {loadingClubs ? (
@@ -267,7 +250,7 @@ export default function NotificationComposerScreen() {
         )}
       </TouchableOpacity>
 
-      {!canSend && (
+      {clubId && !canSend && notificationsToday >= 2 && (
         <Text style={[styles.warningText, { color: "#ef4444" }]}>You have reached the 2 notifications per day limit. Try again tomorrow.</Text>
       )}
     </ScrollView>

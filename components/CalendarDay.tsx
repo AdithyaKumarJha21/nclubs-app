@@ -1,24 +1,88 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useRouter } from "expo-router";
+import { Role } from "../context/AuthContext";
 import { CalendarDay as CalendarDayType } from "../utils/calendarUtils";
 import EventDot from "./EventDot";
 
+export type CalendarEventStatus = "past" | "ongoing" | "upcoming";
+
+export type CalendarEventItem = {
+  id: string;
+  title: string;
+  color: string;
+  status: CalendarEventStatus;
+  startTime: string;
+  endTime: string;
+  location: string | null;
+  clubName: string | null;
+  eventDate: string;
+};
+
 interface CalendarDayProps {
   day: CalendarDayType;
-  events?: { id: string; title: string; color: string }[];
+  events?: CalendarEventItem[];
   isDark?: boolean;
+  role?: Role;
 }
+
+const STATUS_LABELS: Record<CalendarEventStatus, string> = {
+  past: "Ended",
+  ongoing: "Live Now",
+  upcoming: "Upcoming",
+};
+
+const STATUS_BADGE_COLORS: Record<CalendarEventStatus, string> = {
+  past: "#6b7280",
+  ongoing: "#16a34a",
+  upcoming: "#2563eb",
+};
+
+const formatTime = (value: string) => {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "TBA";
+  }
+
+  return date.toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+};
+
+const getEventDetailRoute = (role?: Role) => {
+  if (role === "president") {
+    return "/president/events/[id]";
+  }
+
+  if (role === "student") {
+    return "/student/events/[id]";
+  }
+
+  return "/event-details";
+};
 
 export default function CalendarDay({
   day,
   events = [],
   isDark = false,
+  role,
 }: CalendarDayProps) {
+  const router = useRouter();
   const [showModal, setShowModal] = useState(false);
 
   const isCurrentMonth = day.isCurrentMonth;
   const isToday = day.isToday;
   const hasEvents = events.length > 0;
+
+  const dateLabel = useMemo(() => day.date.toLocaleDateString(), [day.date]);
+
+  const openEventDetails = (eventId: string) => {
+    const pathname = getEventDetailRoute(role);
+    router.push({ pathname, params: { id: eventId } });
+    setShowModal(false);
+  };
 
   return (
     <>
@@ -26,11 +90,7 @@ export default function CalendarDay({
         style={[
           styles.dayCell,
           {
-            backgroundColor: isToday
-              ? "#0066cc"
-              : isDark
-                ? "#2a2a2a"
-                : "#f9f9f9",
+            backgroundColor: isToday ? "#0066cc" : isDark ? "#2a2a2a" : "#f9f9f9",
           },
           !isCurrentMonth && { opacity: 0.3 },
         ]}
@@ -41,11 +101,7 @@ export default function CalendarDay({
           style={[
             styles.dayNumber,
             {
-              color: isToday
-                ? "#fff"
-                : isDark
-                  ? "#fff"
-                  : "#000",
+              color: isToday ? "#fff" : isDark ? "#fff" : "#000",
               fontWeight: isToday ? "700" : "600",
             },
           ]}
@@ -53,55 +109,28 @@ export default function CalendarDay({
           {day.dayNumber}
         </Text>
 
-        {/* Event Dots */}
         {hasEvents && (
           <View style={styles.dotsContainer}>
             {events.slice(0, 3).map((event, index) => (
-              <EventDot
-                key={`${event.id}-${index}`}
-                color={event.color}
-              />
+              <EventDot key={`${event.id}-${index}`} color={event.color} pulsing={event.status === "ongoing"} />
             ))}
-            {events.length > 3 && (
-              <Text style={styles.moreIndicator}>+{events.length - 3}</Text>
-            )}
+            {events.length > 3 && <Text style={styles.moreIndicator}>+{events.length - 3}</Text>}
           </View>
         )}
       </TouchableOpacity>
 
-      {/* Events Modal */}
-      <Modal
-        visible={showModal}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowModal(false)}
-      >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setShowModal(false)}
-        >
-          <View
-            style={[
-              styles.modalContent,
-              {
-                backgroundColor: isDark ? "#2a2a2a" : "#fff",
-              },
-            ]}
+      <Modal visible={showModal} transparent animationType="fade" onRequestClose={() => setShowModal(false)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowModal(false)}>
+          <TouchableOpacity
+            activeOpacity={1}
+            style={[styles.modalContent, { backgroundColor: isDark ? "#2a2a2a" : "#fff" }]}
           >
-            <Text
-              style={[
-                styles.modalTitle,
-                { color: isDark ? "#fff" : "#000" },
-              ]}
-            >
-              Events on {day.date.toLocaleDateString()}
-            </Text>
+            <Text style={[styles.modalTitle, { color: isDark ? "#fff" : "#000" }]}>Events on {dateLabel}</Text>
 
             <View style={styles.eventsList}>
-              {events.map((event, index) => (
+              {events.map((event) => (
                 <View
-                  key={`${event.id}-${index}`}
+                  key={event.id}
                   style={[
                     styles.eventItem,
                     {
@@ -110,31 +139,38 @@ export default function CalendarDay({
                     },
                   ]}
                 >
-                  <View
-                    style={[
-                      styles.colorDot,
-                      { backgroundColor: event.color },
-                    ]}
-                  />
-                  <Text
-                    style={[
-                      styles.eventTitle,
-                      { color: isDark ? "#fff" : "#000" },
-                    ]}
-                  >
-                    {event.title}
+                  <View style={styles.eventHeaderRow}>
+                    <Text style={[styles.eventTitle, { color: isDark ? "#fff" : "#000" }]}>{event.title}</Text>
+                    <View style={[styles.badge, { backgroundColor: STATUS_BADGE_COLORS[event.status] }]}>
+                      <Text style={styles.badgeText}>{STATUS_LABELS[event.status]}</Text>
+                    </View>
+                  </View>
+
+                  <Text style={[styles.metaText, { color: isDark ? "#ddd" : "#444" }]}>
+                    🕒 {formatTime(event.startTime)} - {formatTime(event.endTime)}
                   </Text>
+                  <Text style={[styles.metaText, { color: isDark ? "#ddd" : "#444" }]}>🏷️ {event.clubName || "General"}</Text>
+                  <Text style={[styles.metaText, { color: isDark ? "#ddd" : "#444" }]}>📍 {event.location || "TBA"}</Text>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.actionButton,
+                      { backgroundColor: event.status === "past" ? "#6b7280" : "#0066cc" },
+                    ]}
+                    onPress={() => openEventDetails(event.id)}
+                  >
+                    <Text style={styles.actionButtonText}>
+                      {event.status === "past" ? "View Recap" : "View Details"}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               ))}
             </View>
 
-            <TouchableOpacity
-              style={styles.closeButton}
-              onPress={() => setShowModal(false)}
-            >
+            <TouchableOpacity style={styles.closeButton} onPress={() => setShowModal(false)}>
               <Text style={styles.closeButtonText}>Close</Text>
             </TouchableOpacity>
-          </View>
+          </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
     </>
@@ -174,13 +210,8 @@ const styles = StyleSheet.create({
   modalContent: {
     borderRadius: 12,
     padding: 20,
-    width: "85%",
-    maxHeight: "80%",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
+    width: "88%",
+    maxHeight: "85%",
   },
   modalTitle: {
     fontSize: 18,
@@ -188,31 +219,54 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   eventsList: {
-    maxHeight: "70%",
+    maxHeight: "76%",
   },
   eventItem: {
-    flexDirection: "row",
-    alignItems: "center",
     padding: 12,
     marginBottom: 8,
     borderRadius: 6,
     borderLeftWidth: 3,
+    gap: 4,
   },
-  colorDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginRight: 10,
+  eventHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
   },
   eventTitle: {
     fontSize: 14,
+    fontWeight: "700",
+    flexShrink: 1,
+  },
+  metaText: {
+    fontSize: 13,
+  },
+  badge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  badgeText: {
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  actionButton: {
+    marginTop: 6,
+    alignSelf: "flex-start",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 6,
+  },
+  actionButtonText: {
+    color: "#fff",
     fontWeight: "600",
-    flex: 1,
+    fontSize: 12,
   },
   closeButton: {
-    backgroundColor: "#0066cc",
+    backgroundColor: "#111827",
     paddingVertical: 10,
-    paddingHorizontal: 20,
     borderRadius: 6,
     alignItems: "center",
     marginTop: 16,

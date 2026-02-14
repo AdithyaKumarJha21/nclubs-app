@@ -15,6 +15,51 @@ export type SendNotificationInput = {
   role: Role;
 };
 
+export type NotificationRecord = {
+  id: string;
+  club_id: string;
+  club_name: string;
+  title: string;
+  body: string;
+  created_at: string;
+};
+
+type NotificationRow = {
+  id: string;
+  club_id: string;
+  title: string;
+  body: string;
+  created_at: string;
+  clubs: { name: string | null } | { name: string | null }[] | null;
+};
+
+const toNotificationRecord = (row: NotificationRow): NotificationRecord => {
+  const clubData = Array.isArray(row.clubs) ? row.clubs[0] : row.clubs;
+
+  return {
+    id: row.id,
+    club_id: row.club_id,
+    club_name: clubData?.name?.trim() || "Unknown Club",
+    title: row.title,
+    body: row.body,
+    created_at: row.created_at,
+  };
+};
+
+const getTodayUtcWindow = () => {
+  const now = new Date();
+  const startOfTodayUtc = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+  );
+  const startOfTomorrowUtc = new Date(startOfTodayUtc);
+  startOfTomorrowUtc.setUTCDate(startOfTomorrowUtc.getUTCDate() + 1);
+
+  return {
+    startIso: startOfTodayUtc.toISOString(),
+    endIso: startOfTomorrowUtc.toISOString(),
+  };
+};
+
 type SupabaseRequestError = Error & { code?: string };
 
 export const getNotificationClubOptions = async (
@@ -110,6 +155,66 @@ export const sendNotification = async ({
   }
 
   return data;
+};
+
+export const getNotificationCountForClubToday = async (
+  clubId: string
+): Promise<number> => {
+  const { startIso, endIso } = getTodayUtcWindow();
+
+  const { count, error } = await supabase
+    .from("notifications")
+    .select("id", { count: "exact", head: true })
+    .eq("club_id", clubId)
+    .gte("created_at", startIso)
+    .lt("created_at", endIso);
+
+  if (error) {
+    throw new Error(normalizeSupabaseError(error));
+  }
+
+  return count ?? 0;
+};
+
+export const getVisibleNotifications = async (
+  role: Role,
+  userId: string
+): Promise<NotificationRecord[]> => {
+  const { startIso, endIso } = getTodayUtcWindow();
+
+  if (role !== "faculty" && role !== "president") {
+    const { data, error } = await supabase
+      .from("notifications")
+      .select("id, club_id, title, body, created_at, clubs(name)")
+      .gte("created_at", startIso)
+      .lt("created_at", endIso)
+      .order("created_at", { ascending: false });
+
+    if (error || !data) {
+      throw new Error(normalizeSupabaseError(error));
+    }
+
+    return (data as NotificationRow[]).map(toNotificationRecord);
+  }
+
+  const clubIds = await getMyClubs({ id: userId, role });
+  if (clubIds.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("notifications")
+    .select("id, club_id, title, body, created_at, clubs(name)")
+    .in("club_id", clubIds)
+    .gte("created_at", startIso)
+    .lt("created_at", endIso)
+    .order("created_at", { ascending: false });
+
+  if (error || !data) {
+    throw new Error(normalizeSupabaseError(error));
+  }
+
+  return (data as NotificationRow[]).map(toNotificationRecord);
 };
 
 export const deleteNotification = async (

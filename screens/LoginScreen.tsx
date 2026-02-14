@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -25,6 +26,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
 
   const topMessage = useMemo(() => {
     if (params.reason === "password_reset") {
@@ -112,15 +114,35 @@ export default function LoginScreen() {
 
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Password</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Enter password"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            editable={!isSubmitting}
-          />
+          <View style={styles.passwordField}>
+            <TextInput
+              style={[styles.input, styles.passwordInput]}
+              placeholder="Enter password"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!isPasswordVisible}
+              editable={!isSubmitting}
+            />
+            <TouchableOpacity
+              onPress={() => setIsPasswordVisible((prev) => !prev)}
+              accessibilityLabel={
+                isPasswordVisible ? "Hide password" : "Show password"
+              }
+              style={styles.passwordToggle}
+              disabled={isSubmitting}
+            >
+              <Ionicons
+                name={isPasswordVisible ? "eye-off" : "eye"}
+                size={20}
+                color="#64748b"
+              />
+            </TouchableOpacity>
+          </View>
         </View>
+
+        <TouchableOpacity onPress={handleForgotPasswordPress}>
+          <Text style={styles.link}>Forgot Password?</Text>
+        </TouchableOpacity>
 
         {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
 
@@ -134,10 +156,6 @@ export default function LoginScreen() {
           ) : (
             <Text style={styles.loginButtonText}>Login</Text>
           )}
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={handleForgotPasswordPress}>
-          <Text style={styles.link}>Forgot Password?</Text>
         </TouchableOpacity>
 
         <TouchableOpacity onPress={handleRegisterPress}>
@@ -195,6 +213,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     fontSize: 15,
     color: "#0f172a",
+  },
+  passwordField: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  passwordInput: {
+    flex: 1,
+    paddingRight: 40,
+  },
+  passwordToggle: {
+    position: "absolute",
+    right: 10,
+    padding: 4,
   },
   loginButton: {
     backgroundColor: "#2563eb",
