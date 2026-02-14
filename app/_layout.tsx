@@ -53,11 +53,17 @@ function AppStack() {
       <Stack.Screen name="forgot-password" options={{ title: "Forgot Password" }} />
       <Stack.Screen name="reset-password" options={{ title: "Reset Password" }} />
 
-      <Stack.Screen name="student-home" options={{ title: "Student Home" }} />
-      <Stack.Screen name="faculty-home" options={{ title: "Faculty Dashboard" }} />
+      <Stack.Screen
+        name="student-home"
+        options={{ title: "Student Home", headerShown: false }}
+      />
+      <Stack.Screen
+        name="faculty-home"
+        options={{ title: "Faculty Dashboard", headerShown: false }}
+      />
       <Stack.Screen
         name="president-home"
-        options={{ title: "President Dashboard" }}
+        options={{ title: "President Dashboard", headerShown: false }}
       />
     </Stack>
   );
