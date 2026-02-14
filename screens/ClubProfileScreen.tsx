@@ -300,9 +300,7 @@ export default function ClubProfileScreen() {
     setIsUploadingLogo(true);
 
     // ✅ IMPORTANT: path is <club_id>/<filename> to satisfy your storage policies
-    const fileExt =
-      pendingLogoAsset.name?.split(".").pop()?.toLowerCase() ?? "jpg";
-    const fileName = `${normalizedClubId}-${Date.now()}.${fileExt}`;
+    const fileName = `logo_${Date.now()}.png`;
     const filePath = `${normalizedClubId}/${fileName}`;
 
     try {
@@ -333,6 +331,11 @@ export default function ClubProfileScreen() {
           const { data: publicData } = supabase.storage
             .from(bucketName)
             .getPublicUrl(filePath);
+
+          await supabase
+            .from("clubs")
+            .update({ logo_url: publicData.publicUrl })
+            .eq("id", normalizedClubId);
 
           return {
             bucket: bucketName,

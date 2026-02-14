@@ -14,7 +14,8 @@ export default function ClubLogo({ logoUrl, clubName, size = 64, showErrorMessag
   const [hasError, setHasError] = useState(false);
 
   const normalizedUrl = (logoUrl ?? "").trim();
-  const canRenderImage = normalizedUrl.length > 0 && !hasError;
+  const displayUrl = normalizedUrl ? `${normalizedUrl}?t=${Date.now()}` : "";
+  const canRenderImage = displayUrl.length > 0 && !hasError;
 
   const fallbackLetter = useMemo(() => {
     const cleanedName = clubName.trim();
@@ -37,7 +38,7 @@ export default function ClubLogo({ logoUrl, clubName, size = 64, showErrorMessag
     >
       {canRenderImage ? (
         <Image
-          source={{ uri: normalizedUrl, cacheKey: normalizedUrl }}
+          source={{ uri: displayUrl, cacheKey: displayUrl }}
           contentFit="cover"
           cachePolicy="memory-disk"
           priority="low"
