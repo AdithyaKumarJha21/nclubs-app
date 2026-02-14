@@ -1,5 +1,6 @@
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import ClubLogo from "./ClubLogo";
+import { getClubLogoPublicUrl } from "../services/clubLogo";
 
 type Props = {
   name: string;
@@ -8,16 +9,17 @@ type Props = {
 };
 
 export default function ClubCard({ name, logo, onPress }: Props) {
-  const normalizedLogo = logo.trim();
-  const logoWithCacheBust = normalizedLogo
-    ? `${normalizedLogo}?v=${encodeURIComponent(normalizedLogo)}`
+  const normalizedLogoPath = logo.trim();
+  const logoUrl = getClubLogoPublicUrl(normalizedLogoPath);
+  const logoWithCacheBust = logoUrl
+    ? `${logoUrl}?v=${encodeURIComponent(normalizedLogoPath)}`
     : "";
 
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.8}>
       <View style={styles.logoWrapper}>
         <ClubLogo
-          key={normalizedLogo}
+          key={normalizedLogoPath}
           logoUrl={logoWithCacheBust}
           clubName={name}
           size={LOGO_SIZE}
