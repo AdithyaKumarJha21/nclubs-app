@@ -11,6 +11,7 @@ type User = {
 
 type ProfileRoleIdRow = {
   role_id: string | null;
+  roles: { name: string | null } | { name: string | null }[] | null;
 };
 
 type RoleNameRow = {
@@ -28,6 +29,46 @@ const AuthContext = createContext<AuthContextType>({
 });
 
 const PROFILE_FETCH_DELAYS_MS = [300, 600, 900] as const;
+
+const normalizeRole = (roleName: string | null | undefined): Role => {
+  const normalized = roleName?.toLowerCase();
+
+  if (
+    normalized === "student" ||
+    normalized === "faculty" ||
+    normalized === "president" ||
+    normalized === "admin"
+  ) {
+    return normalized;
+  }
+
+  return "student";
+};
+
+const isAuthPath = (path: string | null | undefined) =>
+  path === "/" ||
+  path === "/login" ||
+  path === "/faculty-login" ||
+  path === "/signup" ||
+  path === "/forgot-password" ||
+  path === "/reset-password" ||
+  path === "/verify-otp" ||
+  path === "/auth-callback";
+
+const extractRoleFromProfile = (profile: ProfileRoleIdRow | null): Role | null => {
+  if (!profile?.roles) {
+    return null;
+  }
+
+  const roleRow = Array.isArray(profile.roles) ? profile.roles[0] : profile.roles;
+  const roleName = roleRow?.name;
+
+  if (!roleName) {
+    return null;
+  }
+
+  return normalizeRole(roleName);
+};
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -70,20 +111,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
   };
 
-  const normalizeRole = (roleName: string | null | undefined): Role => {
-    const normalized = roleName?.toLowerCase();
-
-    if (
-      normalized === "student" ||
-      normalized === "faculty" ||
-      normalized === "president" ||
-      normalized === "admin"
-    ) {
-      return normalized;
-    }
-
-    return "student";
-  };
 
   const getRouteForRole = (role: Role) => {
     if (role === "faculty" || role === "admin") {
@@ -97,17 +124,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return "/student-home";
   };
 
+
   const resolveRoleWithRetry = useCallback(async (userId: string): Promise<Role> => {
     for (let attempt = 0; attempt <= PROFILE_FETCH_DELAYS_MS.length; attempt += 1) {
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
-        .select("role_id")
+        .select("role_id, roles(name)")
         .eq("id", userId)
         .maybeSingle<ProfileRoleIdRow>();
 
       if (profileError && profileError.code !== "PGRST116") {
         console.error("Role profile fetch failed:", profileError);
         return "student";
+      }
+
+      const roleFromJoin = extractRoleFromProfile(profile ?? null);
+
+      if (roleFromJoin) {
+        return roleFromJoin;
       }
 
       if (profile?.role_id) {
@@ -169,8 +203,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const sessionKey = `${userId}:${role}`;
         const path = getRouteForRole(role);
         const isAlreadyAtRoleRoute = pathnameRef.current === path;
+        const shouldSkipAutoRoute = event === "SIGNED_IN" && isAuthPath(pathnameRef.current);
 
-        if (!isAlreadyAtRoleRoute && lastRoutedSessionKeyRef.current !== sessionKey) {
+        if (
+          !shouldSkipAutoRoute &&
+          !isAlreadyAtRoleRoute &&
+          lastRoutedSessionKeyRef.current !== sessionKey
+        ) {
           routerRef.current.replace(path);
           console.log("[auth] routed", { role, path });
         }
