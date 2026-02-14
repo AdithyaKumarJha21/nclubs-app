@@ -8,10 +8,20 @@ type Props = {
 };
 
 export default function ClubCard({ name, logo, onPress }: Props) {
+  const normalizedLogo = logo.trim();
+  const logoWithCacheBust = normalizedLogo
+    ? `${normalizedLogo}?v=${encodeURIComponent(normalizedLogo)}`
+    : "";
+
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.8}>
       <View style={styles.logoWrapper}>
-        <ClubLogo logoUrl={logo} clubName={name} size={LOGO_SIZE} />
+        <ClubLogo
+          key={normalizedLogo}
+          logoUrl={logoWithCacheBust}
+          clubName={name}
+          size={LOGO_SIZE}
+        />
       </View>
 
       <Text style={styles.name} numberOfLines={2}>

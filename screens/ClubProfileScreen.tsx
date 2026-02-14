@@ -299,9 +299,12 @@ export default function ClubProfileScreen() {
 
     setIsUploadingLogo(true);
 
-    // ✅ IMPORTANT: path is <club_id>/<filename> to satisfy your storage policies
-    const fileName = `logo_${Date.now()}.png`;
-    const filePath = `${normalizedClubId}/${fileName}`;
+    const extension =
+      pendingLogoAsset.name?.split(".").pop()?.toLowerCase() === "png"
+        ? "png"
+        : "jpg";
+    const fileName = `logo_${Date.now()}.${extension}`;
+    const filePath = `logos/${normalizedClubId}/${fileName}`;
 
     try {
       const fileResponse = await fetch(pendingLogoAsset.uri);
@@ -323,8 +326,9 @@ export default function ClubProfileScreen() {
         const { error: uploadError } = await supabase.storage
           .from(bucketName)
           .upload(filePath, fileBuffer, {
-            upsert: true,
-            contentType: pendingLogoAsset.mimeType ?? "image/jpeg",
+            upsert: false,
+            contentType:
+              extension === "png" ? "image/png" : "image/jpeg",
           });
 
         if (!uploadError) {

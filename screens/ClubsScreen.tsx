@@ -1,5 +1,6 @@
 import { useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
+import { useCallback, useMemo, useState } from "react";
 import { FlatList, StyleSheet, Text, View } from "react-native";
 import ClubCard from "../components/ClubCard";
 import ClubSearchBar from "../components/ClubSearchBar";
@@ -43,11 +44,8 @@ export default function ClubsScreen() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
 
-  useEffect(() => {
-    let isActive = true;
-
-    const loadClubs = async () => {
-      setLoading(true);
+  const loadClubs = useCallback(async () => {
+    setLoading(true);
 
       let data: ClubRowPartial[] | null = null;
       let error: { code?: string; message?: string } | null = null;
@@ -62,8 +60,6 @@ export default function ClubsScreen() {
         // If error is NOT "column does not exist", stop trying
         if (!error || error.code !== "42703") break;
       }
-
-      if (!isActive) return;
 
       if (error) {
         console.error(error);
@@ -95,16 +91,21 @@ export default function ClubsScreen() {
         logo_url: club.logo_url ?? latestLogoByClub.get(club.id) ?? null,
       }));
 
-      setClubs(normalizedClubs);
-      setLoading(false);
-    };
+    setClubs(normalizedClubs);
+    setLoading(false);
+  }, []);
 
-    loadClubs();
+  useFocusEffect(
+    useCallback(() => {
+      if (!user) {
+        setClubs([]);
+        setLoading(false);
+        return;
+      }
 
-    return () => {
-      isActive = false;
-    };
-  }, [user]);
+      loadClubs();
+    }, [loadClubs, user])
+  );
 
   const trimmedQuery = searchQuery.trim();
   const normalizedQuery = trimmedQuery.toLowerCase();
