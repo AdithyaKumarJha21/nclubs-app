@@ -1,6 +1,6 @@
 import * as DocumentPicker from "expo-document-picker";
 import { useLocalSearchParams } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   ScrollView,
@@ -20,6 +20,7 @@ import UploadFileSection from "../components/UploadFileSection";
 import { useAuth } from "../context/AuthContext";
 import { useEditMode } from "../hooks/useEditMode";
 import { canManageClub } from "../services/permissions";
+import { getClubLogoPublicUrl } from "../services/clubLogo";
 import { supabase } from "../services/supabase";
 import { useTheme } from "../theme/ThemeContext";
 
@@ -82,7 +83,7 @@ export default function ClubProfileScreen() {
   const [isLoadingClub, setIsLoadingClub] = useState(true);
 
   const [clubName, setClubName] = useState("");
-  const [clubLogoUrl, setClubLogoUrl] = useState("");
+  const [clubLogoPath, setClubLogoPath] = useState("");
   const [pendingLogoAsset, setPendingLogoAsset] =
     useState<DocumentPicker.DocumentPickerAsset | null>(null);
   const [removeLogoOnSave, setRemoveLogoOnSave] = useState(false);
@@ -144,14 +145,8 @@ export default function ClubProfileScreen() {
         file.file_type === CLUB_LOGO_FILE_TYPE || file.title === CLUB_LOGO_TITLE
     );
 
-    const derivedLogoUrl = matchedLogoFile
-      ? supabase.storage
-          .from(matchedLogoFile.bucket)
-          .getPublicUrl(matchedLogoFile.path).data.publicUrl
-      : "";
-
     setClubName(clubData?.name ?? "");
-    setClubLogoUrl(clubData?.logo_url ?? derivedLogoUrl);
+    setClubLogoPath(clubData?.logo_url ?? matchedLogoFile?.path ?? "");
     setExistingLogoFile(matchedLogoFile ?? null);
 
     setAbout(sectionData?.find((s) => s.title === "About Us")?.content ?? "");
@@ -234,11 +229,16 @@ export default function ClubProfileScreen() {
     loadPermission();
   }, [user, normalizedClubId]);
 
+  const clubLogoDisplayUrl = useMemo(
+    () => getClubLogoPublicUrl(clubLogoPath),
+    [clubLogoPath]
+  );
+
   if (loading || isLoadingClub || isCheckingPermission) return null;
 
   const displayedLogoUrl = removeLogoOnSave
     ? ""
-    : pendingLogoAsset?.uri ?? clubLogoUrl;
+    : pendingLogoAsset?.uri ?? clubLogoDisplayUrl;
 
   const validateLogoAsset = (asset: DocumentPicker.DocumentPickerAsset) => {
     const mimeType = (asset.mimeType ?? "").toLowerCase();
@@ -291,7 +291,6 @@ export default function ClubProfileScreen() {
     | {
         bucket: string;
         path: string;
-        publicUrl: string;
       }
     | null
   > => {
@@ -332,19 +331,14 @@ export default function ClubProfileScreen() {
           });
 
         if (!uploadError) {
-          const { data: publicData } = supabase.storage
-            .from(bucketName)
-            .getPublicUrl(filePath);
-
           await supabase
             .from("clubs")
-            .update({ logo_url: publicData.publicUrl })
+            .update({ logo_url: filePath })
             .eq("id", normalizedClubId);
 
           return {
             bucket: bucketName,
             path: filePath,
-            publicUrl: publicData.publicUrl,
           };
         }
 
@@ -382,12 +376,12 @@ export default function ClubProfileScreen() {
       return;
     }
 
-    const nextLogoUrl = removeLogoOnSave
+    const nextLogoPath = removeLogoOnSave
       ? ""
-      : uploadedLogo?.publicUrl ?? clubLogoUrl;
+      : uploadedLogo?.path ?? clubLogoPath;
 
     const updatePayloadTries = [
-      { name: clubName, logo_url: nextLogoUrl || null },
+      { name: clubName, logo_url: nextLogoPath || null },
       { name: clubName },
     ] as const;
 
@@ -540,7 +534,7 @@ export default function ClubProfileScreen() {
       }
     }
 
-    setClubLogoUrl(nextLogoUrl || "");
+    setClubLogoPath(nextLogoPath || "");
     setPendingLogoAsset(null);
     setRemoveLogoOnSave(false);
     Alert.alert("Success", "Club updated successfully!");

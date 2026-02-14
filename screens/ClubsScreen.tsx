@@ -81,8 +81,7 @@ export default function ClubsScreen() {
         const isLogo = row.file_type === "logo" || row.title === "Club Logo";
         if (!isLogo) continue;
 
-        const publicUrl = supabase.storage.from(row.bucket).getPublicUrl(row.path).data.publicUrl;
-        latestLogoByClub.set(row.club_id, publicUrl);
+        latestLogoByClub.set(row.club_id, row.path);
       }
 
       const normalizedClubs: Club[] = (data ?? []).map((club) => ({
