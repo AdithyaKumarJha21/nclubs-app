@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import {
@@ -35,6 +36,8 @@ export default function ResetPasswordScreen() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isResending, setIsResending] = useState(false);
+  const [isNewPasswordVisible, setIsNewPasswordVisible] = useState(false);
+  const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] = useState(false);
 
   const handleResetPassword = async () => {
     if (!email) {
@@ -158,22 +161,56 @@ export default function ResetPasswordScreen() {
         />
 
         <Text style={styles.label}>New Password</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Enter new password"
-          secureTextEntry
-          value={newPassword}
-          onChangeText={setNewPassword}
-        />
+        <View style={styles.passwordField}>
+          <TextInput
+            style={[styles.input, styles.passwordInput]}
+            placeholder="Enter new password"
+            secureTextEntry={!isNewPasswordVisible}
+            value={newPassword}
+            onChangeText={setNewPassword}
+          />
+          <TouchableOpacity
+            onPress={() => setIsNewPasswordVisible((prev) => !prev)}
+            accessibilityLabel={
+              isNewPasswordVisible ? "Hide new password" : "Show new password"
+            }
+            style={styles.passwordToggle}
+            disabled={isSubmitting || isResending}
+          >
+            <Ionicons
+              name={isNewPasswordVisible ? "eye-off" : "eye"}
+              size={20}
+              color="#64748b"
+            />
+          </TouchableOpacity>
+        </View>
 
         <Text style={styles.label}>Confirm Password</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Confirm password"
-          secureTextEntry
-          value={confirmPassword}
-          onChangeText={setConfirmPassword}
-        />
+        <View style={styles.passwordField}>
+          <TextInput
+            style={[styles.input, styles.passwordInput]}
+            placeholder="Confirm password"
+            secureTextEntry={!isConfirmPasswordVisible}
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
+          />
+          <TouchableOpacity
+            onPress={() => setIsConfirmPasswordVisible((prev) => !prev)}
+            accessibilityLabel={
+              isConfirmPasswordVisible
+                ? "Hide confirm password"
+                : "Show confirm password"
+            }
+            style={styles.passwordToggle}
+            disabled={isSubmitting || isResending}
+          >
+            <Ionicons
+              name={isConfirmPasswordVisible ? "eye-off" : "eye"}
+              size={20}
+              color="#64748b"
+            />
+          </TouchableOpacity>
+        </View>
 
         <TouchableOpacity
           style={styles.button}
@@ -243,6 +280,21 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 12,
     marginBottom: 12,
+  },
+  passwordField: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  passwordInput: {
+    flex: 1,
+    marginBottom: 0,
+    paddingRight: 40,
+  },
+  passwordToggle: {
+    position: "absolute",
+    right: 10,
+    padding: 4,
   },
   readOnlyInput: {
     backgroundColor: "#f3f4f6",
