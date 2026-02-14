@@ -649,12 +649,22 @@ export default function ClubProfileScreen() {
         value={whatToExpect}
         isEditing={isEditing && isManager}
         onChange={setWhatToExpect}
+        renderReadOnlyValue={(value) => {
+          if (isManager) return value;
+
+          return renderTextWithLinks(value, theme.linkColor ?? theme.primary);
+        }}
       />
       <EditableTextSection
         title="Achievements"
         value={achievements}
         isEditing={isEditing && isManager}
         onChange={setAchievements}
+        renderReadOnlyValue={(value) => {
+          if (isManager) return value;
+
+          return renderTextWithLinks(value, theme.linkColor ?? theme.primary);
+        }}
       />
 
       <View style={styles.section}>
