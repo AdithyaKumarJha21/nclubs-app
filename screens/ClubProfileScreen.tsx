@@ -14,8 +14,7 @@ import {
 import ClubGallery from "../components/ClubGallery";
 import ClubLogo from "../components/ClubLogo";
 import EditableTextSection from "../components/EditableTextSection";
-import UploadedFilesList from "../components/UploadedFilesList";
-import UploadFileSection from "../components/UploadFileSection";
+import ClubFilesSection from "../components/ClubFilesSection";
 import { renderTextWithLinks } from "../utils/renderTextWithLinks";
 
 import { useAuth } from "../context/AuthContext";
@@ -672,12 +671,7 @@ export default function ClubProfileScreen() {
         <ClubGallery clubId={normalizedClubId} isManager={isManager} />
       </View>
 
-      {isManager && (
-        <>
-          <UploadedFilesList />
-          <UploadFileSection />
-        </>
-      )}
+      <ClubFilesSection clubId={normalizedClubId} isManager={isManager} />
     </ScrollView>
   );
 }
