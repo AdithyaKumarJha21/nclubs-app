@@ -18,9 +18,32 @@ export type SendNotificationInput = {
 export type NotificationRecord = {
   id: string;
   club_id: string;
+  club_name: string;
   title: string;
   body: string;
   created_at: string;
+};
+
+type NotificationRow = {
+  id: string;
+  club_id: string;
+  title: string;
+  body: string;
+  created_at: string;
+  clubs: { name: string | null } | { name: string | null }[] | null;
+};
+
+const toNotificationRecord = (row: NotificationRow): NotificationRecord => {
+  const clubData = Array.isArray(row.clubs) ? row.clubs[0] : row.clubs;
+
+  return {
+    id: row.id,
+    club_id: row.club_id,
+    club_name: clubData?.name?.trim() || "Unknown Club",
+    title: row.title,
+    body: row.body,
+    created_at: row.created_at,
+  };
 };
 
 const getTodayUtcWindow = () => {
@@ -162,7 +185,7 @@ export const getVisibleNotifications = async (
   if (role !== "faculty" && role !== "president") {
     const { data, error } = await supabase
       .from("notifications")
-      .select("id, club_id, title, body, created_at")
+      .select("id, club_id, title, body, created_at, clubs(name)")
       .gte("created_at", startIso)
       .lt("created_at", endIso)
       .order("created_at", { ascending: false });
@@ -171,7 +194,7 @@ export const getVisibleNotifications = async (
       throw new Error(normalizeSupabaseError(error));
     }
 
-    return data;
+    return (data as NotificationRow[]).map(toNotificationRecord);
   }
 
   const clubIds = await getMyClubs({ id: userId, role });
@@ -181,7 +204,7 @@ export const getVisibleNotifications = async (
 
   const { data, error } = await supabase
     .from("notifications")
-    .select("id, club_id, title, body, created_at")
+    .select("id, club_id, title, body, created_at, clubs(name)")
     .in("club_id", clubIds)
     .gte("created_at", startIso)
     .lt("created_at", endIso)
@@ -191,7 +214,7 @@ export const getVisibleNotifications = async (
     throw new Error(normalizeSupabaseError(error));
   }
 
-  return data;
+  return (data as NotificationRow[]).map(toNotificationRecord);
 };
 
 export const deleteNotification = async (
