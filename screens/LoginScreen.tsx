@@ -3,6 +3,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
@@ -12,7 +13,7 @@ import {
   View,
 } from "react-native";
 import { supabase } from "../services/supabase";
-import { isValidEmail } from "../utils/auth";
+import { extractRoleName, isValidEmail } from "../utils/auth";
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -69,7 +70,31 @@ export default function LoginScreen() {
     });
 
     if (error || !data.user?.id) {
-      setErrorMessage(error?.message || "Invalid login credentials.");
+      setErrorMessage("Invalid email or password");
+      setIsSubmitting(false);
+      return;
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("roles(name)")
+      .eq("id", data.user.id)
+      .single();
+
+    if (profileError) {
+      setErrorMessage("Unable to determine user role.");
+      await supabase.auth.signOut();
+      setIsSubmitting(false);
+      return;
+    }
+
+    const role = extractRoleName(profile);
+
+    if (role === "faculty" || role === "admin") {
+      await supabase.auth.signOut();
+      const message = "Faculty cannot login here. Please use the 'Login as Faculty' option.";
+      setErrorMessage(message);
+      Alert.alert("Access restricted", message);
       setIsSubmitting(false);
       return;
     }
