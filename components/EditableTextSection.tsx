@@ -1,15 +1,18 @@
 import {
-    StyleSheet,
-    Text,
-    TextInput,
-    View
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
+
+import { ReactNode } from "react";
 
 type Props = {
   title: string;
   value: string;
   isEditing: boolean;
   onChange: (text: string) => void;
+  renderReadOnlyValue?: (value: string) => ReactNode;
 };
 
 export default function EditableTextSection({
@@ -17,6 +20,7 @@ export default function EditableTextSection({
   value,
   isEditing,
   onChange,
+  renderReadOnlyValue,
 }: Props) {
   return (
     <View style={styles.container}>
@@ -30,7 +34,9 @@ export default function EditableTextSection({
           style={styles.input}
         />
       ) : (
-        <Text style={styles.text}>{value}</Text>
+        <Text style={styles.text}>
+          {renderReadOnlyValue ? renderReadOnlyValue(value) : value}
+        </Text>
       )}
     </View>
   );

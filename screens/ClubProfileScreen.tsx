@@ -16,6 +16,7 @@ import ClubLogo from "../components/ClubLogo";
 import EditableTextSection from "../components/EditableTextSection";
 import UploadedFilesList from "../components/UploadedFilesList";
 import UploadFileSection from "../components/UploadFileSection";
+import { renderTextWithLinks } from "../utils/renderTextWithLinks";
 
 import { useAuth } from "../context/AuthContext";
 import { useEditMode } from "../hooks/useEditMode";
@@ -49,6 +50,15 @@ type ClubFileRow = {
   title?: string | null;
   created_at?: string | null;
   uploader_id?: string | null; // ✅ matches policy column name assumption
+};
+
+type ClubSection = {
+  id: string;
+  club_id: string;
+  title: string;
+  content: string | null;
+  order_index: number;
+  created_at: string;
 };
 
 export default function ClubProfileScreen() {
@@ -89,9 +99,9 @@ export default function ClubProfileScreen() {
 
     const { data: sectionData, error: sectionError } = await supabase
       .from("club_sections")
-      .select("*")
+      .select("id, club_id, title, content, order_index, created_at")
       .eq("club_id", normalizedClubId)
-      .order("order_index");
+      .order("order_index", { ascending: true });
 
     let clubData: ClubRowPartial | null = null;
     let clubError: { code?: string; message: string } | null = null;
@@ -136,12 +146,14 @@ export default function ClubProfileScreen() {
     setClubLogoPath(clubData?.logo_url ?? matchedLogoFile?.path ?? "");
     setExistingLogoFile(matchedLogoFile ?? null);
 
-    setAbout(sectionData?.find((s) => s.title === "About Us")?.content ?? "");
+    const clubSections = (sectionData as ClubSection[] | null) ?? [];
+
+    setAbout(clubSections.find((s) => s.title === "About Us")?.content ?? "");
     setWhatToExpect(
-      sectionData?.find((s) => s.title === "What to Expect")?.content ?? ""
+      clubSections.find((s) => s.title === "What to Expect")?.content ?? ""
     );
     setAchievements(
-      sectionData?.find((s) => s.title === "Achievements")?.content ?? ""
+      clubSections.find((s) => s.title === "Achievements")?.content ?? ""
     );
 
     setIsLoadingClub(false);
@@ -626,6 +638,11 @@ export default function ClubProfileScreen() {
         value={about}
         isEditing={isEditing && isManager}
         onChange={setAbout}
+        renderReadOnlyValue={(value) => {
+          if (isManager) return value;
+
+          return renderTextWithLinks(value, theme.linkColor ?? theme.primary);
+        }}
       />
       <EditableTextSection
         title="What to Expect"
